@@ -1,0 +1,16 @@
+# Ignore local virtual environment packages
+.venv/
+ENV/
+env/
+
+# Ignore local configuration and secret keys
+.env
+*.env
+
+# Ignore Python caching artifacts (junk compilation files)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignore Mac OS system files
+.DS_Store
