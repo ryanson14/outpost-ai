@@ -4,8 +4,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
-# NEW IMPORT: Look in scraper.py and bring in our web fetching function
-from scraper import fetch_competitor_changelog
+from scraper import scrape_all_competitors
 
 # Define the structured matrix layout
 class StrategicAnalysis(BaseModel):
@@ -48,6 +47,16 @@ def analyze_competitor_move(user_profile: str, competitor_update: str) -> str:
     )
     return response.text
 
+
+def format_competitor_update(competitor_name: str, pages: dict[str, str]) -> str:
+    """Combine changelog and pricing markdown into one analysis payload."""
+    return (
+        f"Competitor: {competitor_name}\n\n"
+        f"## Changelog / Product Updates\n{pages.get('changelog', '')}\n\n"
+        f"## Pricing\n{pages.get('pricing', '')}"
+    )
+
+
 # Test Harness
 if __name__ == "__main__":
     # Our constant PM Context
@@ -57,15 +66,14 @@ if __name__ == "__main__":
     Current Roadmap Focus: Building a deep 'Jira-to-GitHub' automated synchronization engine.
     """
     
-    # Target URL we want to analyze live
-    live_target_url = "https://linear.app/changelog"
-    
-    print("🚀 STEP 1: Running the Firecrawl Scraper...")
-    # This calls our scraper.py script automatically and returns live data
-    live_competitor_data = fetch_competitor_changelog(live_target_url)
-    
-    print("\n🧠 STEP 2: Feeding live data into the Outpost Analysis Engine...")
-    analysis_result = analyze_competitor_move(mock_user_profile, live_competitor_data)
-    
-    print("\n📊 LIVE STRATEGIC ANALYSIS OUTPUT (JSON):")
-    print(analysis_result)
+    print("🚀 STEP 1: Scraping all competitors (changelog + pricing)...")
+    all_intel = scrape_all_competitors()
+
+    print("\n🧠 STEP 2: Running strategic analysis per competitor...")
+    for name, pages in all_intel.items():
+        competitor_update = format_competitor_update(name, pages)
+        print(f"\n{'=' * 60}")
+        print(f"Analyzing {name}...")
+        analysis_result = analyze_competitor_move(mock_user_profile, competitor_update)
+        print(f"\n📊 {name} — STRATEGIC ANALYSIS (JSON):")
+        print(analysis_result)
