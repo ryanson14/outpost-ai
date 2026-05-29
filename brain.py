@@ -1,10 +1,12 @@
 import os
+
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
 from scraper import scrape_all_competitors
+from slack_notify import format_threat_alert, get_threat_threshold, send_slack_alert
 
 # Define the structured matrix layout
 class StrategicAnalysis(BaseModel):
@@ -17,7 +19,7 @@ load_dotenv() # Automatically loads your hidden .env variables
 API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=API_KEY)
 
-def analyze_competitor_move(user_profile: str, competitor_update: str) -> str:
+def analyze_competitor_move(user_profile: str, competitor_update: str) -> StrategicAnalysis:
     """Feeds the context into Gemini and demands a structured strategic analysis."""
     system_instruction = (
         "You are Outpost, an elite Product Strategy Analyst AI. Your job is to analyze "
@@ -45,7 +47,7 @@ def analyze_competitor_move(user_profile: str, competitor_update: str) -> str:
             temperature=0.2, 
         ),
     )
-    return response.text
+    return StrategicAnalysis.model_validate_json(response.text)
 
 
 def format_competitor_update(competitor_name: str, pages: dict[str, str]) -> str:
@@ -57,23 +59,42 @@ def format_competitor_update(competitor_name: str, pages: dict[str, str]) -> str
     )
 
 
-# Test Harness
-if __name__ == "__main__":
-    # Our constant PM Context
-    mock_user_profile = """
-    Product Name: TaskFlow AI (Project management for AI startups)
-    Current Q3 Goal: Increase retention of enterprise engineering teams.
-    Current Roadmap Focus: Building a deep 'Jira-to-GitHub' automated synchronization engine.
-    """
-    
-    print("🚀 STEP 1: Scraping all competitors (changelog + pricing)...")
+DEFAULT_USER_PROFILE = """
+Product Name: TaskFlow AI (Project management for AI startups)
+Current Q3 Goal: Increase retention of enterprise engineering teams.
+Current Roadmap Focus: Building a deep 'Jira-to-GitHub' automated synchronization engine.
+"""
+
+
+def run_pipeline(user_profile: str = DEFAULT_USER_PROFILE) -> None:
+    """Scrape → analyze → Slack alert when threat meets threshold."""
+    threshold = get_threat_threshold()
+    print(f"🚀 STEP 1: Scraping all competitors (changelog + pricing)...")
     all_intel = scrape_all_competitors()
 
-    print("\n🧠 STEP 2: Running strategic analysis per competitor...")
+    print(f"\n🧠 STEP 2: Strategic analysis (Slack alerts at threat ≥ {threshold})...")
     for name, pages in all_intel.items():
         competitor_update = format_competitor_update(name, pages)
         print(f"\n{'=' * 60}")
         print(f"Analyzing {name}...")
-        analysis_result = analyze_competitor_move(mock_user_profile, competitor_update)
-        print(f"\n📊 {name} — STRATEGIC ANALYSIS (JSON):")
-        print(analysis_result)
+        analysis = analyze_competitor_move(user_profile, competitor_update)
+        print(f"\n📊 {name} — threat {analysis.threat_level}/10")
+        print(analysis.model_dump_json(indent=2))
+
+        if analysis.threat_level >= threshold:
+            alert = format_threat_alert(
+                competitor_name=name,
+                strategic_intent=analysis.strategic_intent,
+                threat_level=analysis.threat_level,
+                threat_justification=analysis.threat_justification,
+                recommended_roadmap_pivot=analysis.recommended_roadmap_pivot,
+            )
+            print(f"\n📣 STEP 3: Sending Slack alert for {name}...")
+            if send_slack_alert(alert):
+                print("✅ Slack alert sent.")
+        else:
+            print(f"ℹ️  Below threshold ({threshold}) — no Slack alert.")
+
+
+if __name__ == "__main__":
+    run_pipeline()
