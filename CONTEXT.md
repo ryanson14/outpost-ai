@@ -5,13 +5,29 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 
 ---
 
-## Current Status (updated May 2026)
+## Current Status (May 28, 2026)
 
 | Phase | Status | Notes |
 |---|---|---|
 | Phase 1 — The Brain | ✅ COMPLETE | Gemini outputs structured `StrategicAnalysis` JSON |
-| Phase 2 — The Fuel | 🔶 MOSTLY DONE | 3 competitors + scrape→analyze wired; **cron job still needed** |
-| Phase 3 — The Delivery | 🔶 IN PROGRESS | `slack_notify.py` wired; alerts fire when threat ≥ threshold |
+| Phase 2 — The Fuel | 🔶 MOSTLY DONE | 3 competitors scraped; pipeline wired; **cron + dedupe still needed** |
+| Phase 3 — The Delivery | 🔶 MOSTLY DONE | Slack live & tested; **cron automation still needed** |
+
+**Repo:** All work pushed to `main` on GitHub (`ryanson14/outpost-ai`).
+
+---
+
+## Session Log
+
+### May 28, 2026
+- Expanded scraper from 1 → **3 competitors** (Linear, Jira, Asana), each with changelog + pricing pages
+- Built `scrape_all_competitors()` and wired it into `brain.py`
+- Added `run_pipeline()` — full scrape → analyze loop for all competitors
+- Created `slack_notify.py` — formatted alerts + incoming webhook delivery
+- Added **threat threshold filter** (`OUTPOST_THREAT_THRESHOLD`, default 7) so Slack only fires on high-priority threats
+- Updated `CONTEXT.md` to reflect Python MVP architecture and current progress
+- **Git:** 2 commits pushed — multi-competitor scraper + Slack integration
+- **Slack E2E test passed** — live alert delivered to workspace channel
 
 ---
 
@@ -40,7 +56,7 @@ Output shape (`brain.py` → `StrategicAnalysis`):
 - [x] Firecrawl set up and working
 - [x] **3 competitors** in `scraper.py`: **Linear**, **Jira**, **Asana** (changelog + pricing each)
 - [x] `scrape_all_competitors()` returns markdown for all targets
-- [x] `brain.py` runs scrape → analyze for every competitor via `run_pipeline()`
+- [x] `brain.py` → `run_pipeline()` runs scrape → analyze for every competitor
 
 **What's left:**
 - [ ] **24-hour cron job** — automate `python brain.py` (e.g. GitHub Actions)
@@ -48,7 +64,7 @@ Output shape (`brain.py` → `StrategicAnalysis`):
 
 ---
 
-### Phase 3 — The "Delivery" 🔶 IN PROGRESS
+### Phase 3 — The "Delivery" 🔶 MOSTLY DONE
 
 **What's done:**
 - [x] `slack_notify.py` — webhook posting + alert formatting
@@ -59,8 +75,8 @@ Output shape (`brain.py` → `StrategicAnalysis`):
 - [x] **Threshold filter** — Slack only when `threat_level >= OUTPOST_THREAT_THRESHOLD` (default **7**)
 
 **What's left:**
-- [ ] Add `SLACK_WEBHOOK_URL` to `.env` (see setup below)
-- [ ] End-to-end test with a live webhook
+- [x] **Live end-to-end test** — `python brain.py` confirmed alert in Slack
+- [ ] **Cron automation** — daily scheduled run (pairs with Phase 2)
 - [ ] Jira ticket references in alerts (post-MVP polish)
 
 ---
@@ -75,18 +91,16 @@ Output shape (`brain.py` → `StrategicAnalysis`):
 | `requirements.txt` | Python dependencies |
 | `.env` | API keys (not committed) |
 
-> **Note:** Long-term stack in Key Decisions targets TypeScript + Vercel AI SDK; current MVP is **Python** for speed.
+> **Note:** Long-term stack targets TypeScript + Vercel AI SDK; current MVP is **Python** for speed.
 
 ---
 
 ## Environment Variables
 
-Add to `.env`:
-
 ```bash
 FIRECRAWL_API_KEY=...
 GEMINI_API_KEY=...
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...   # Incoming Webhook URL
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 OUTPOST_THREAT_THRESHOLD=7   # optional; only Slack when threat_level >= this
 ```
 
@@ -97,7 +111,7 @@ OUTPOST_THREAT_THRESHOLD=7   # optional; only Slack when threat_level >= this
 ## Run the Pipeline
 
 ```bash
-source .venv/bin/activate
+source .venv/bin/activate   # only needed for Python, not git
 python brain.py
 ```
 
@@ -119,15 +133,18 @@ Flow: scrape all competitors → Gemini analysis each → print JSON → **Slack
 
 ## MVP — Must-Have Features
 
-1. **"So What?" Engine** — ✅ via `strategic_intent` + `threat_justification`
-2. **Jira Integration** — ❌ not started
-3. **Pricing / Changelog Scraper** — ✅ Linear, Jira, Asana
+| Feature | Status |
+|---|---|
+| "So What?" Engine | ✅ `strategic_intent` + `threat_justification` |
+| Pricing / Changelog Scraper | ✅ Linear, Jira, Asana |
+| Slack Delivery | ✅ Live & tested |
+| Jira Integration | ❌ Not started |
 
 ---
 
 ## Immediate Next Step
 
-> **Automate the pipeline:** GitHub Actions (or cron) to run `python brain.py` daily, then add **Supabase** to store content hashes so you don't re-alert on unchanged pages.
+> **1)** Add GitHub Actions cron for daily runs. **2)** Add Supabase content hashing so unchanged pages don't re-alert.
 
 ---
 
