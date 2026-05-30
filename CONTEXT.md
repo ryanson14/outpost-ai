@@ -10,8 +10,8 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 | Phase | Status | Notes |
 |---|---|---|
 | Phase 1 — The Brain | ✅ COMPLETE | Gemini outputs structured `StrategicAnalysis` JSON |
-| Phase 2 — The Fuel | 🔶 MOSTLY DONE | 3 competitors scraped; pipeline wired; **cron + dedupe still needed** |
-| Phase 3 — The Delivery | 🔶 MOSTLY DONE | Slack live & tested; **cron automation still needed** |
+| Phase 2 — The Fuel | 🔶 MOSTLY DONE | 3 competitors scraped; GitHub Actions cron added; **dedupe still needed** |
+| Phase 3 — The Delivery | ✅ COMPLETE | Slack live & tested; daily cron via GitHub Actions |
 
 **Repo:** All work pushed to `main` on GitHub (`ryanson14/outpost-ai`).
 
@@ -28,6 +28,7 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 - Updated `CONTEXT.md` to reflect Python MVP architecture and current progress
 - **Git:** 2 commits pushed — multi-competitor scraper + Slack integration
 - **Slack E2E test passed** — live alert delivered to workspace channel
+- Added **GitHub Actions** workflow (`.github/workflows/daily-pipeline.yml`) — daily + manual runs
 
 ---
 
@@ -59,7 +60,7 @@ Output shape (`brain.py` → `StrategicAnalysis`):
 - [x] `brain.py` → `run_pipeline()` runs scrape → analyze for every competitor
 
 **What's left:**
-- [ ] **24-hour cron job** — automate `python brain.py` (e.g. GitHub Actions)
+- [x] **24-hour cron job** — GitHub Actions runs `python brain.py` daily at 9 AM ET
 - [ ] **Supabase deduplication** — only analyze/alert when page content actually changes
 
 ---
@@ -76,7 +77,7 @@ Output shape (`brain.py` → `StrategicAnalysis`):
 
 **What's left:**
 - [x] **Live end-to-end test** — `python brain.py` confirmed alert in Slack
-- [ ] **Cron automation** — daily scheduled run (pairs with Phase 2)
+- [x] **Cron automation** — GitHub Actions daily schedule + manual trigger
 - [ ] Jira ticket references in alerts (post-MVP polish)
 
 ---
@@ -88,6 +89,7 @@ Output shape (`brain.py` → `StrategicAnalysis`):
 | `scraper.py` | Firecrawl — 3 competitors, changelog + pricing |
 | `brain.py` | Gemini analysis + `run_pipeline()` orchestration |
 | `slack_notify.py` | Slack incoming webhook alerts |
+| `.github/workflows/daily-pipeline.yml` | GitHub Actions — daily cron + manual run |
 | `requirements.txt` | Python dependencies |
 | `.env` | API keys (not committed) |
 
@@ -105,6 +107,17 @@ OUTPOST_THREAT_THRESHOLD=7   # optional; only Slack when threat_level >= this
 ```
 
 **Slack setup:** Slack app → Incoming Webhooks → add to workspace → copy webhook URL into `.env`.
+
+**GitHub Actions secrets** (repo → Settings → Secrets and variables → Actions → New repository secret):
+
+| Secret | Required |
+|---|---|
+| `FIRECRAWL_API_KEY` | Yes |
+| `GEMINI_API_KEY` | Yes |
+| `SLACK_WEBHOOK_URL` | Yes |
+| `OUTPOST_THREAT_THRESHOLD` | No (defaults to `7`) |
+
+After pushing the workflow file, trigger a test run: **Actions** tab → **Daily Competitive Intel Pipeline** → **Run workflow**.
 
 ---
 
@@ -144,7 +157,7 @@ Flow: scrape all competitors → Gemini analysis each → print JSON → **Slack
 
 ## Immediate Next Step
 
-> **1)** Add GitHub Actions cron for daily runs. **2)** Add Supabase content hashing so unchanged pages don't re-alert.
+> **1)** Push workflow + add GitHub secrets, then run workflow manually to verify. **2)** Add Supabase content hashing so unchanged pages don't re-alert on daily runs.
 
 ---
 
