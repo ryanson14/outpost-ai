@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 from firecrawl import FirecrawlApp
 
+from security import MAX_PAGE_MARKDOWN_CHARS, truncate
+
 load_dotenv()
 FIRECRAWL_API_KEY = os.environ.get("FIRECRAWL_API_KEY")
 app = FirecrawlApp(api_key=FIRECRAWL_API_KEY)
@@ -42,7 +44,8 @@ def fetch_page(url: str) -> str:
     print(f"🌐 Firecrawl is scraping: {url}")
 
     scrape_result = app.scrape_url(url, formats=["markdown"])
-    return scrape_result.markdown if scrape_result.markdown else ""
+    raw = scrape_result.markdown if scrape_result.markdown else ""
+    return truncate(raw, MAX_PAGE_MARKDOWN_CHARS, label=url)
 
 
 def fetch_competitor_changelog(url: str) -> str:

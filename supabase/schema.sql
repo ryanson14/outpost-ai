@@ -11,3 +11,6 @@ create table if not exists page_snapshots (
 -- Optional: index for debugging / audits
 create index if not exists page_snapshots_updated_at_idx
   on page_snapshots (updated_at desc);
+
+-- Enable RLS (run supabase/rls.sql for anon deny policies)
+alter table public.page_snapshots enable row level security;

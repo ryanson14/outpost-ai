@@ -6,7 +6,15 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from dedupe import has_content_changed, save_snapshots
-from scraper import scrape_all_competitors
+from scraper import COMPETITORS, scrape_all_competitors
+from security import (
+    MAX_GEMINI_CALLS_PER_RUN,
+    MAX_PAGE_MARKDOWN_CHARS,
+    SYSTEM_INSTRUCTION,
+    build_analysis_prompt,
+    truncate,
+    validate_competitor_name,
+)
 from slack_notify import format_threat_alert, get_threat_threshold, send_slack_alert
 
 # Define the structured matrix layout
@@ -22,27 +30,13 @@ client = genai.Client(api_key=API_KEY)
 
 def analyze_competitor_move(user_profile: str, competitor_update: str) -> StrategicAnalysis:
     """Feeds the context into Gemini and demands a structured strategic analysis."""
-    system_instruction = (
-        "You are Outpost, an elite Product Strategy Analyst AI. Your job is to analyze "
-        "competitor updates against a user's specific product profile and goals. "
-        "Do not just summarize the news. Provide deep, brutal, strategic analysis."
-    )
-    
-    user_prompt = f"""
-    OUR PRODUCT PROFILE & GOALS:
-    {user_profile}
-    
-    COMPETITOR UPDATE DETECTED:
-    {competitor_update}
-    
-    Analyze this update and populate the required structure.
-    """
-    
+    user_prompt = build_analysis_prompt(user_profile, competitor_update)
+
     response = client.models.generate_content(
         model='gemini-2.5-flash',
         contents=user_prompt,
         config=types.GenerateContentConfig(
-            system_instruction=system_instruction,
+            system_instruction=SYSTEM_INSTRUCTION,
             response_mime_type="application/json",
             response_schema=StrategicAnalysis,
             temperature=0.2, 
@@ -53,10 +47,13 @@ def analyze_competitor_move(user_profile: str, competitor_update: str) -> Strate
 
 def format_competitor_update(competitor_name: str, pages: dict[str, str]) -> str:
     """Combine changelog and pricing markdown into one analysis payload."""
+    safe_name = validate_competitor_name(competitor_name, {c.name for c in COMPETITORS})
+    changelog = truncate(pages.get("changelog", ""), MAX_PAGE_MARKDOWN_CHARS, label=f"{safe_name} changelog")
+    pricing = truncate(pages.get("pricing", ""), MAX_PAGE_MARKDOWN_CHARS, label=f"{safe_name} pricing")
     return (
-        f"Competitor: {competitor_name}\n\n"
-        f"## Changelog / Product Updates\n{pages.get('changelog', '')}\n\n"
-        f"## Pricing\n{pages.get('pricing', '')}"
+        f"Competitor: {safe_name}\n\n"
+        f"## Changelog / Product Updates\n{changelog}\n\n"
+        f"## Pricing\n{pricing}"
     )
 
 
@@ -73,8 +70,12 @@ def run_pipeline(user_profile: str = DEFAULT_USER_PROFILE) -> None:
     print(f"🚀 STEP 1: Scraping all competitors (changelog + pricing)...")
     all_intel = scrape_all_competitors()
 
+    allowed_names = {c.name for c in COMPETITORS}
+    gemini_calls = 0
+
     print(f"\n🧠 STEP 2: Strategic analysis (Slack alerts at threat ≥ {threshold})...")
     for name, pages in all_intel.items():
+        validate_competitor_name(name, allowed_names)
         if not has_content_changed(name, pages):
             print(f"\n{'=' * 60}")
             print(f"⏭️  {name} — no page changes since last run, skipping.")
@@ -83,6 +84,12 @@ def run_pipeline(user_profile: str = DEFAULT_USER_PROFILE) -> None:
         competitor_update = format_competitor_update(name, pages)
         print(f"\n{'=' * 60}")
         print(f"Analyzing {name}...")
+        gemini_calls += 1
+        if gemini_calls > MAX_GEMINI_CALLS_PER_RUN:
+            raise RuntimeError(
+                f"Exceeded MAX_GEMINI_CALLS_PER_RUN ({MAX_GEMINI_CALLS_PER_RUN}). "
+                "Aborting to protect API quota."
+            )
         analysis = analyze_competitor_move(user_profile, competitor_update)
         print(f"\n📊 {name} — threat {analysis.threat_level}/10")
         print(analysis.model_dump_json(indent=2))

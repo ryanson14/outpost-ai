@@ -5,7 +5,11 @@ env/
 
 # Ignore local configuration and secret keys
 .env
+.env.*
+!.env.example
 *.env
+.env.local
+.env.*.local
 
 # Ignore Python caching artifacts (junk compilation files)
 __pycache__/

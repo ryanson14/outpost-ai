@@ -9,6 +9,12 @@ load_dotenv()
 TABLE = "page_snapshots"
 
 
+def _allowed_competitor_names() -> set[str]:
+    from scraper import COMPETITORS
+
+    return {c.name for c in COMPETITORS}
+
+
 def is_configured() -> bool:
     return bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_KEY"))
 
@@ -35,6 +41,9 @@ def _get_client():
 
 
 def _fetch_stored_hashes(competitor_name: str) -> dict[str, str]:
+    from security import validate_competitor_name
+
+    validate_competitor_name(competitor_name, _allowed_competitor_names())
     client = _get_client()
     response = (
         client.table(TABLE)
@@ -63,12 +72,15 @@ def save_snapshots(competitor_name: str, pages: dict[str, str]) -> None:
     if not is_configured():
         return
 
+    from security import validate_competitor_name, validate_page_type
+
+    validate_competitor_name(competitor_name, _allowed_competitor_names())
     client = _get_client()
     now = datetime.now(timezone.utc).isoformat()
     rows = [
         {
             "competitor_name": competitor_name,
-            "page_type": page_type,
+            "page_type": validate_page_type(page_type),
             "content_hash": _hash_content(content),
             "updated_at": now,
         }
