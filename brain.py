@@ -5,6 +5,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
+from dedupe import has_content_changed, save_snapshots
 from scraper import scrape_all_competitors
 from slack_notify import format_threat_alert, get_threat_threshold, send_slack_alert
 
@@ -74,6 +75,11 @@ def run_pipeline(user_profile: str = DEFAULT_USER_PROFILE) -> None:
 
     print(f"\n🧠 STEP 2: Strategic analysis (Slack alerts at threat ≥ {threshold})...")
     for name, pages in all_intel.items():
+        if not has_content_changed(name, pages):
+            print(f"\n{'=' * 60}")
+            print(f"⏭️  {name} — no page changes since last run, skipping.")
+            continue
+
         competitor_update = format_competitor_update(name, pages)
         print(f"\n{'=' * 60}")
         print(f"Analyzing {name}...")
@@ -94,6 +100,8 @@ def run_pipeline(user_profile: str = DEFAULT_USER_PROFILE) -> None:
                 print("✅ Slack alert sent.")
         else:
             print(f"ℹ️  Below threshold ({threshold}) — no Slack alert.")
+
+        save_snapshots(name, pages)
 
 
 if __name__ == "__main__":

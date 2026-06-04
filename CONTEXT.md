@@ -10,7 +10,7 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 | Phase | Status | Notes |
 |---|---|---|
 | Phase 1 — The Brain | ✅ COMPLETE | Gemini outputs structured `StrategicAnalysis` JSON |
-| Phase 2 — The Fuel | 🔶 MOSTLY DONE | 3 competitors scraped; GitHub Actions cron added; **dedupe still needed** |
+| Phase 2 — The Fuel | 🔶 MOSTLY DONE | Cron done; **Supabase dedupe wired — finish setup below** |
 | Phase 3 — The Delivery | ✅ COMPLETE | Slack live & tested; daily cron via GitHub Actions |
 
 **Repo:** All work pushed to `main` on GitHub (`ryanson14/outpost-ai`).
@@ -61,7 +61,7 @@ Output shape (`brain.py` → `StrategicAnalysis`):
 
 **What's left:**
 - [x] **24-hour cron job** — GitHub Actions runs `python brain.py` daily at 9 AM ET
-- [ ] **Supabase deduplication** — only analyze/alert when page content actually changes
+- [ ] **Supabase deduplication** — table + env vars (code in `dedupe.py`; finish setup below)
 
 ---
 
@@ -88,7 +88,9 @@ Output shape (`brain.py` → `StrategicAnalysis`):
 |---|---|
 | `scraper.py` | Firecrawl — 3 competitors, changelog + pricing |
 | `brain.py` | Gemini analysis + `run_pipeline()` orchestration |
+| `dedupe.py` | Supabase content hashing — skip unchanged pages |
 | `slack_notify.py` | Slack incoming webhook alerts |
+| `supabase/schema.sql` | SQL to create the `page_snapshots` table |
 | `.github/workflows/daily-pipeline.yml` | GitHub Actions — daily cron + manual run |
 | `requirements.txt` | Python dependencies |
 | `.env` | API keys (not committed) |
@@ -104,9 +106,17 @@ FIRECRAWL_API_KEY=...
 GEMINI_API_KEY=...
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 OUTPOST_THREAT_THRESHOLD=7   # optional; only Slack when threat_level >= this
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_KEY=...             # service_role secret (Settings → API)
 ```
 
 **Slack setup:** Slack app → Incoming Webhooks → add to workspace → copy webhook URL into `.env`.
+
+**Supabase setup:**
+1. **SQL Editor** → paste + run `supabase/schema.sql` (creates `page_snapshots` table)
+2. **Settings → API** → copy **Project URL** → `SUPABASE_URL`
+3. **Settings → API** → copy **service_role** secret → `SUPABASE_KEY` (never commit)
+4. Add same two vars to GitHub Actions secrets
 
 **GitHub Actions secrets** (repo → Settings → Secrets and variables → Actions → New repository secret):
 
@@ -115,6 +125,8 @@ OUTPOST_THREAT_THRESHOLD=7   # optional; only Slack when threat_level >= this
 | `FIRECRAWL_API_KEY` | Yes |
 | `GEMINI_API_KEY` | Yes |
 | `SLACK_WEBHOOK_URL` | Yes |
+| `SUPABASE_URL` | Yes (for dedupe) |
+| `SUPABASE_KEY` | Yes (service_role, for dedupe) |
 | `OUTPOST_THREAT_THRESHOLD` | No (defaults to `7`) |
 
 After pushing the workflow file, trigger a test run: **Actions** tab → **Daily Competitive Intel Pipeline** → **Run workflow**.
@@ -128,7 +140,9 @@ source .venv/bin/activate   # only needed for Python, not git
 python brain.py
 ```
 
-Flow: scrape all competitors → Gemini analysis each → print JSON → **Slack alert** if threat ≥ threshold.
+Flow: scrape all competitors → **skip if unchanged (Supabase)** → Gemini analysis → **Slack alert** if threat ≥ threshold → save new hashes.
+
+**Verify dedupe:** Run `python brain.py` twice back-to-back. Second run should print `no page changes since last run, skipping` for each competitor.
 
 ---
 
@@ -138,7 +152,7 @@ Flow: scrape all competitors → Gemini analysis each → print JSON → **Slack
 |---|---|---|
 | Language | **Python 3.11** | TypeScript |
 | AI | **Google Gemini** (`google-genai`) | Vercel AI SDK |
-| Database | — | Supabase (dedupe alerts) |
+| Database | **Supabase** (`page_snapshots`) | Same |
 | Scraping | **Firecrawl.dev** | Same |
 | Delivery | **Slack Incoming Webhook** | Same |
 
@@ -151,20 +165,21 @@ Flow: scrape all competitors → Gemini analysis each → print JSON → **Slack
 | "So What?" Engine | ✅ `strategic_intent` + `threat_justification` |
 | Pricing / Changelog Scraper | ✅ Linear, Jira, Asana |
 | Slack Delivery | ✅ Live & tested |
+| Content deduplication | 🔶 Code done — finish Supabase setup |
 | Jira Integration | ❌ Not started |
 
 ---
 
 ## Immediate Next Step
 
-> **1)** Push workflow + add GitHub secrets, then run workflow manually to verify. **2)** Add Supabase content hashing so unchanged pages don't re-alert on daily runs.
+> **Finish Supabase setup** (SQL table + env vars), run pipeline twice to verify dedupe, then push. Next: Jira integration or more competitors.
 
 ---
 
 ## Key Decisions
 - Python for MVP prototyping; TypeScript migration later
 - Gemini for structured JSON analysis
-- Supabase planned for deduplication (not built yet)
+- Supabase stores content hashes in `page_snapshots` (skip unchanged pages)
 - Firecrawl for scraping
 - No frontend — Slack is the delivery layer for MVP
 - Threat threshold gates noise before Slack fires
