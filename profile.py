@@ -1,27 +1,34 @@
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
-from security import MAX_PROFILE_CHARS, strip_control_chars, truncate
+from security import (
+    MAX_BACKLOG_TICKETS,
+    MAX_PROFILE_CHARS,
+    strip_control_chars,
+    truncate,
+    validate_ticket_id,
+    validate_ticket_title,
+)
 
 DEFAULT_PROFILE_PATH = Path(__file__).parent / "profile.yaml"
 REQUIRED_FIELDS = ("product_name", "product_description", "q3_goal", "roadmap_focus")
 
 
-def _format_profile(data: dict[str, str]) -> str:
-    return (
-        f"Product Name: {data['product_name']} ({data['product_description']})\n"
-        f"Current Q3 Goal: {data['q3_goal']}\n"
-        f"Current Roadmap Focus: {data['roadmap_focus']}"
-    )
+@dataclass(frozen=True)
+class BacklogTicket:
+    id: str
+    title: str
 
 
-def load_user_profile(path: Path | str | None = None) -> str:
-    """Load and format the PM product profile from profile.yaml."""
-    profile_path = Path(
-        path or os.environ.get("OUTPOST_PROFILE_PATH", DEFAULT_PROFILE_PATH)
-    )
+def _resolve_profile_path(path: Path | str | None = None) -> Path:
+    return Path(path or os.environ.get("OUTPOST_PROFILE_PATH", DEFAULT_PROFILE_PATH))
+
+
+def _load_profile_data(path: Path | str | None = None) -> dict:
+    profile_path = _resolve_profile_path(path)
 
     if not profile_path.is_file():
         raise FileNotFoundError(
@@ -35,6 +42,62 @@ def load_user_profile(path: Path | str | None = None) -> str:
     if not isinstance(data, dict):
         raise ValueError(f"Invalid profile format in {profile_path}: expected a YAML mapping.")
 
+    return data
+
+
+def load_backlog_tickets(path: Path | str | None = None) -> tuple[BacklogTicket, ...]:
+    """Load backlog tickets from profile.yaml (optional section)."""
+    raw = _load_profile_data(path).get("backlog_tickets") or []
+    if not isinstance(raw, list):
+        raise ValueError("backlog_tickets must be a list in profile.yaml.")
+
+    tickets: list[BacklogTicket] = []
+    seen: set[str] = set()
+    for entry in raw[:MAX_BACKLOG_TICKETS]:
+        if not isinstance(entry, dict):
+            continue
+        ticket_id = entry.get("id")
+        title = entry.get("title")
+        if not ticket_id or not title:
+            continue
+        safe_id = validate_ticket_id(str(ticket_id))
+        if safe_id in seen:
+            continue
+        seen.add(safe_id)
+        tickets.append(
+            BacklogTicket(
+                id=safe_id,
+                title=validate_ticket_title(str(title)),
+            )
+        )
+    return tuple(tickets)
+
+
+def _format_backlog_section(tickets: tuple[BacklogTicket, ...]) -> str:
+    if not tickets:
+        return ""
+    lines = [f"- {ticket.id}: {ticket.title}" for ticket in tickets]
+    return "OUR BACKLOG (Jira tickets):\n" + "\n".join(lines)
+
+
+def _format_profile(data: dict[str, str], tickets: tuple[BacklogTicket, ...]) -> str:
+    sections = [
+        (
+            f"Product Name: {data['product_name']} ({data['product_description']})\n"
+            f"Current Q3 Goal: {data['q3_goal']}\n"
+            f"Current Roadmap Focus: {data['roadmap_focus']}"
+        )
+    ]
+    backlog = _format_backlog_section(tickets)
+    if backlog:
+        sections.append(backlog)
+    return "\n\n".join(sections)
+
+
+def load_user_profile(path: Path | str | None = None) -> str:
+    """Load and format the PM product profile from profile.yaml."""
+    data = _load_profile_data(path)
+
     missing = [field for field in REQUIRED_FIELDS if not data.get(field)]
     if missing:
         raise ValueError(f"Profile missing required fields: {', '.join(missing)}")
@@ -43,4 +106,5 @@ def load_user_profile(path: Path | str | None = None) -> str:
         field: strip_control_chars(str(data[field]).strip())
         for field in REQUIRED_FIELDS
     }
-    return truncate(_format_profile(cleaned), MAX_PROFILE_CHARS, label="user profile")
+    tickets = load_backlog_tickets(path)
+    return truncate(_format_profile(cleaned, tickets), MAX_PROFILE_CHARS, label="user profile")

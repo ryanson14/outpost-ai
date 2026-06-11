@@ -2,3 +2,8 @@ product_name: TaskFlow AI
 product_description: Project management for AI startups
 q3_goal: Increase retention of enterprise engineering teams.
 roadmap_focus: Building a deep 'Jira-to-GitHub' automated synchronization engine.
+backlog_tickets:
+  - id: PROJ-402
+    title: Jira-to-GitHub automated sync
+  - id: PROJ-118
+    title: Enterprise onboarding and retention dashboard

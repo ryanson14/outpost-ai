@@ -1,6 +1,6 @@
 # Outpost — Project Context
 
-> **Resume here:** MVP engine is production-ready. Phase 1 product polish in progress (`profile.yaml` done). See **Roadmap** and **Refactor when scaling** below.
+> **Resume here:** MVP engine is production-ready. Phase A config polish nearly done (backlog ticket refs in Slack ✅). See **Roadmap** and **Refactor when scaling** below.
 
 ## What This Is
 An AI-powered **competitive intelligence tool for Product Managers**. It monitors competitors automatically, filters the noise, and delivers only the strategic insights that actually matter — where the PM already works (Slack, Jira, email).
@@ -17,7 +17,7 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 | Phase 2 — The Fuel | ✅ COMPLETE | 3 competitors, cron, Supabase dedupe |
 | Phase 3 — The Delivery | ✅ COMPLETE | Slack live; GitHub Actions daily @ 9 AM ET |
 | Security | ✅ COMPLETE | RLS, prompt guards, input limits — see `SECURITY.md` |
-| Productization | 🔶 IN PROGRESS | Profile + competitors in Supabase; Jira links next |
+| Productization | 🔶 IN PROGRESS | Profile + competitors + backlog ticket refs in Slack |
 
 ---
 
@@ -32,6 +32,7 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 - **GitHub Actions** — Node 24 action versions (`checkout@v6`, `setup-python@v6`)
 - **Security hardening** — `security.py`, `SECURITY.md`, `supabase/rls.sql`, `.env.example`
 - **Profile config (Step 1)** — `profile.yaml` + `profile.py`; removed hardcoded profile from `brain.py`
+- **Backlog ticket refs (Step 3)** — `backlog_tickets` in `profile.yaml`; `related_tickets` in Gemini schema; Slack *Related Backlog* section
 
 ---
 
@@ -40,7 +41,7 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 ### Phase A — Config polish (before multi-user)
 - [x] **1. User profile in `profile.yaml`** — edit goals/roadmap without code changes
 - [x] **2. Configurable competitors in Supabase** — `competitors` table + `competitors.py`
-- [ ] **3. Jira-style ticket references in Slack alerts** — e.g. "Review PROJ-402"
+- [x] **3. Jira-style ticket references in Slack alerts** — `backlog_tickets` in `profile.yaml`; Gemini `related_tickets` → Slack section
 - [ ] **4. Keep this file updated** after each major session
 
 ### Phase B — Sellable product (startup PMs)
@@ -143,7 +144,7 @@ python brain.py
 | Security hardening + RLS | ✅ |
 | Configurable PM profile | ✅ `profile.yaml` |
 | Configurable competitors | ✅ Supabase `competitors` table |
-| Jira ticket references | ❌ Step 3 |
+| Jira ticket references | ✅ `backlog_tickets` + Slack *Related Backlog* |
 | Multi-tenant / web UI | ❌ Phase B |
 
 ---
@@ -160,4 +161,4 @@ python brain.py
 
 ## Immediate Next Step
 
-> **Step 3:** Jira-style ticket references in Slack alerts. **Manual:** Run `supabase/competitors.sql` in SQL Editor if table doesn't exist yet.
+> **Step 4:** Keep this file updated after each session. **Phase B next:** simple web UI (signup, competitors, Slack connect).

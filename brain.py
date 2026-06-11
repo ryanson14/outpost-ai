@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from competitors import load_competitors
 from dedupe import has_content_changed, save_snapshots
-from profile import load_user_profile
+from profile import load_backlog_tickets, load_user_profile
 from scraper import scrape_all_competitors
 from security import (
     MAX_GEMINI_CALLS_PER_RUN,
@@ -15,6 +15,7 @@ from security import (
     SYSTEM_INSTRUCTION,
     build_analysis_prompt,
     truncate,
+    filter_related_ticket_ids,
     validate_competitor_name,
 )
 from slack_notify import format_threat_alert, get_threat_threshold, send_slack_alert
@@ -25,6 +26,10 @@ class StrategicAnalysis(BaseModel):
     threat_level: int = Field(description="A scale from 1 (no threat) to 10 (critical threat) relative to our company goals.")
     threat_justification: str = Field(description="Detailed reason for the threat score, explicitly referencing our Q3 goal.")
     recommended_roadmap_pivot: str = Field(description="Direct, actionable advice on what the PM should do next with their backlog.")
+    related_tickets: list[str] = Field(
+        default_factory=list,
+        description="IDs of backlog tickets from OUR BACKLOG most affected by this competitor move. Only use IDs from the profile.",
+    )
 
 load_dotenv() # Automatically loads your hidden .env variables
 API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -62,6 +67,9 @@ def format_competitor_update(competitor_name: str, pages: dict[str, str], allowe
 def run_pipeline(user_profile: str | None = None) -> None:
     """Scrape → analyze → Slack alert when threat meets threshold."""
     profile = user_profile or load_user_profile()
+    backlog_tickets = load_backlog_tickets()
+    ticket_map = {ticket.id: ticket.title for ticket in backlog_tickets}
+    allowed_ticket_ids = set(ticket_map)
     threshold = get_threat_threshold()
     competitors = load_competitors()
     allowed_names = {c.name for c in competitors}
@@ -90,6 +98,12 @@ def run_pipeline(user_profile: str | None = None) -> None:
         print(f"\n📊 {name} — threat {analysis.threat_level}/10")
         print(analysis.model_dump_json(indent=2))
 
+        related_tickets = filter_related_ticket_ids(
+            analysis.related_tickets, allowed_ticket_ids
+        )
+        if related_tickets:
+            print(f"📋 Related backlog: {', '.join(related_tickets)}")
+
         if analysis.threat_level >= threshold:
             alert = format_threat_alert(
                 competitor_name=name,
@@ -97,6 +111,8 @@ def run_pipeline(user_profile: str | None = None) -> None:
                 threat_level=analysis.threat_level,
                 threat_justification=analysis.threat_justification,
                 recommended_roadmap_pivot=analysis.recommended_roadmap_pivot,
+                related_tickets=related_tickets,
+                ticket_map=ticket_map,
             )
             print(f"\n📣 STEP 3: Sending Slack alert for {name}...")
             if send_slack_alert(alert):
