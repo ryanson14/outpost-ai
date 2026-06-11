@@ -3,7 +3,9 @@ import os
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from google.genai.errors import ServerError
 from pydantic import BaseModel, Field
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from competitors import load_competitors
 from dedupe import has_content_changed, save_snapshots
@@ -35,6 +37,16 @@ load_dotenv() # Automatically loads your hidden .env variables
 API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=API_KEY)
 
+def _is_retryable_gemini_error(exc: BaseException) -> bool:
+    return isinstance(exc, ServerError) and getattr(exc, "code", None) == 503
+
+
+@retry(
+    retry=retry_if_exception(_is_retryable_gemini_error),
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=2, min=2, max=30),
+    reraise=True,
+)
 def analyze_competitor_move(user_profile: str, competitor_update: str) -> StrategicAnalysis:
     """Feeds the context into Gemini and demands a structured strategic analysis."""
     user_prompt = build_analysis_prompt(user_profile, competitor_update)
@@ -64,13 +76,31 @@ def format_competitor_update(competitor_name: str, pages: dict[str, str], allowe
     )
 
 
-def run_pipeline(user_profile: str | None = None) -> None:
+def run_pipeline(
+    user_profile: str | None = None,
+    *,
+    user_id: str | None = None,
+) -> None:
     """Scrape → analyze → Slack alert when threat meets threshold."""
-    profile = user_profile or load_user_profile()
-    backlog_tickets = load_backlog_tickets()
+    slack_webhook_url: str | None = None
+
+    if user_id:
+        from settings_store import get_settings
+
+        settings = get_settings(user_id)
+        if not settings:
+            raise ValueError(f"No workspace settings for user {user_id}.")
+        profile = user_profile or load_user_profile(user_id=user_id)
+        backlog_tickets = settings.backlog_tickets
+        threshold = settings.threat_threshold
+        slack_webhook_url = settings.slack_webhook_url
+    else:
+        profile = user_profile or load_user_profile()
+        backlog_tickets = load_backlog_tickets()
+        threshold = get_threat_threshold()
+
     ticket_map = {ticket.id: ticket.title for ticket in backlog_tickets}
     allowed_ticket_ids = set(ticket_map)
-    threshold = get_threat_threshold()
     competitors = load_competitors()
     allowed_names = {c.name for c in competitors}
     print(f"🚀 STEP 1: Scraping {len(competitors)} competitors (changelog + pricing)...")
@@ -115,7 +145,7 @@ def run_pipeline(user_profile: str | None = None) -> None:
                 ticket_map=ticket_map,
             )
             print(f"\n📣 STEP 3: Sending Slack alert for {name}...")
-            if send_slack_alert(alert):
+            if send_slack_alert(alert, webhook_url=slack_webhook_url):
                 print("✅ Slack alert sent.")
         else:
             print(f"ℹ️  Below threshold ({threshold}) — no Slack alert.")

@@ -44,3 +44,6 @@ create policy "competitors_deny_anon_update"
 
 create policy "competitors_deny_anon_delete"
   on public.competitors for delete to anon using (false);
+
+-- workspace_settings (run supabase/workspace_settings.sql first)
+-- RLS policies for authenticated users are defined in workspace_settings.sql

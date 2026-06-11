@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Outpost{% endblock %}
+{% block nav %}
+<nav class="nav">
+  <div class="brand">Outpost</div>
+  <div class="nav-links">
+    <a href="/dashboard">Settings</a>
+    <a href="/competitors">Competitors</a>
+    <form method="post" action="/logout" style="margin:0;">
+      <button class="btn btn-secondary" type="submit">Sign out</button>
+    </form>
+  </div>
+</nav>
+{% endblock %}
+{% block content %}
+<h1>Product settings</h1>
+<p class="lead">Signed in as {{ user.email }}. Gemini uses this context for threat analysis.</p>
+
+<form method="post" action="/dashboard">
+  <div class="card">
+    <h2>Product profile</h2>
+    <label for="product_name">Product name</label>
+    <input id="product_name" name="product_name" type="text" value="{{ settings.product_name }}" required>
+
+    <label for="product_description">Product description</label>
+    <input id="product_description" name="product_description" type="text" value="{{ settings.product_description }}" required>
+
+    <label for="q3_goal">Current Q3 goal</label>
+    <textarea id="q3_goal" name="q3_goal" required>{{ settings.q3_goal }}</textarea>
+
+    <label for="roadmap_focus">Roadmap focus</label>
+    <textarea id="roadmap_focus" name="roadmap_focus" required>{{ settings.roadmap_focus }}</textarea>
+  </div>
+
+  <div class="card">
+    <h2>Backlog tickets</h2>
+    <p class="muted">Jira-style IDs linked in Slack when a competitor move affects them.</p>
+    {% for row in backlog_rows %}
+    <div class="ticket-row">
+      <input name="ticket_id" type="text" placeholder="PROJ-402" value="{{ row.id }}">
+      <input name="ticket_title" type="text" placeholder="Ticket title" value="{{ row.title }}">
+    </div>
+    {% endfor %}
+    <div class="ticket-row">
+      <input name="ticket_id" type="text" placeholder="PROJ-999">
+      <input name="ticket_title" type="text" placeholder="Add another ticket">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Slack delivery</h2>
+    <label for="slack_webhook_url">Incoming webhook URL</label>
+    <input id="slack_webhook_url" name="slack_webhook_url" type="url" value="{{ settings.slack_webhook_url or '' }}" placeholder="https://hooks.slack.com/services/...">
+
+    <label for="threat_threshold">Alert threshold (1–10)</label>
+    <input id="threat_threshold" name="threat_threshold" type="number" min="1" max="10" value="{{ settings.threat_threshold }}">
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" type="submit">Save settings</button>
+  </div>
+</form>
+
+<form method="post" action="/run-pipeline" style="margin-top: 1.5rem;">
+  <div class="card">
+    <h2>Run pipeline now</h2>
+    <p class="muted">Scrape competitors → analyze with Gemini → Slack if threat ≥ threshold. May take 1–2 minutes.</p>
+    <button class="btn btn-primary" type="submit">Run now</button>
+  </div>
+</form>
+{% endblock %}

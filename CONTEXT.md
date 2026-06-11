@@ -1,6 +1,6 @@
 # Outpost — Project Context
 
-> **Resume here:** MVP engine is production-ready. Phase A config polish nearly done (backlog ticket refs in Slack ✅). See **Roadmap** and **Refactor when scaling** below.
+> **Resume here:** Phase B web UI in progress (`app/` FastAPI dashboard). Run `supabase/workspace_settings.sql` in SQL Editor, then `python -m app.main`. See **Roadmap** below.
 
 ## What This Is
 An AI-powered **competitive intelligence tool for Product Managers**. It monitors competitors automatically, filters the noise, and delivers only the strategic insights that actually matter — where the PM already works (Slack, Jira, email).
@@ -48,7 +48,7 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 - [ ] **4. Keep this file updated** after each major session
 
 ### Phase B — Sellable product (startup PMs)
-- [ ] **5. Simple web UI** — signup, add competitors, connect Slack
+- [x] **5. Simple web UI (v1)** — FastAPI + Supabase Auth: signup, profile/settings, competitors, run pipeline
 - [ ] **6. Slack OAuth** — replace single incoming webhook per customer
 - [ ] **7. Multi-tenant Supabase** — `workspaces`, `users`, per-tenant data + RLS policies
 - [ ] **8. Move cron off personal GitHub** — Vercel Cron / Inngest per workspace
@@ -99,6 +99,9 @@ Structure is **fine for solo MVP / portfolio / 1–5 design partners**. Refactor
 | `supabase/rls.sql` | RLS policies (run once in SQL Editor) |
 | `SECURITY.md` | Security audit + remaining risks |
 | `PROGRESS.md` | Day-by-day build log for portfolio / session continuity |
+| `app/main.py` | Web UI — auth, settings, competitors, run pipeline |
+| `settings_store.py` | Per-user profile + Slack settings in Supabase |
+| `supabase/workspace_settings.sql` | `workspace_settings` table + RLS |
 | `.github/workflows/daily-pipeline.yml` | Daily cron + manual run |
 | `.env.example` | Secret template (never commit `.env`) |
 
@@ -114,6 +117,8 @@ OUTPOST_THREAT_THRESHOLD=7      # optional
 SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_KEY=...                # service_role — server/CI only
 # OUTPOST_PROFILE_PATH=profile.yaml   # optional custom profile path
+SUPABASE_ANON_KEY=...                 # web UI auth (server-side only)
+OUTPOST_SESSION_SECRET=...            # web UI cookie signing
 ```
 
 **GitHub Actions secrets:** same keys as above (no `.env` in repo).
@@ -134,6 +139,15 @@ python brain.py
 
 **Verify dedupe:** run twice back-to-back; second run should skip all competitors.
 
+### Web UI (Phase B v1)
+
+1. Supabase SQL Editor → run `supabase/workspace_settings.sql`
+2. Enable **Email** provider in Supabase Auth (disable email confirm for local dev, or confirm via inbox)
+3. Add to `.env`: `SUPABASE_ANON_KEY`, `OUTPOST_SESSION_SECRET` (see `.env.example`)
+4. `pip install -r requirements.txt` then `python -m app.main` → http://127.0.0.1:8000
+
+**Note:** GitHub Actions cron still uses `profile.yaml` + env `SLACK_WEBHOOK_URL` until per-workspace cron (Step 8).
+
 ---
 
 ## MVP Feature Checklist
@@ -149,7 +163,8 @@ python brain.py
 | Configurable PM profile | ✅ `profile.yaml` |
 | Configurable competitors | ✅ Supabase `competitors` table |
 | Jira ticket references | ✅ `backlog_tickets` + Slack *Related Backlog* |
-| Multi-tenant / web UI | ❌ Phase B |
+| Web UI (settings + competitors) | ✅ `app/` FastAPI dashboard |
+| Multi-tenant / Slack OAuth | ❌ Phase B (steps 6–8) |
 
 ---
 
@@ -165,4 +180,4 @@ python brain.py
 
 ## Immediate Next Step
 
-> **Step 4:** Keep this file updated after each session. **Phase B next:** simple web UI (signup, competitors, Slack connect).
+> **Web UI v1 shipped** — polish + multi-tenant (Steps 6–8). **Manual:** run `supabase/workspace_settings.sql` before first signup.

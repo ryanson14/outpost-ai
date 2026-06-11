@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Competitors — Outpost{% endblock %}
+{% block nav %}
+<nav class="nav">
+  <div class="brand">Outpost</div>
+  <div class="nav-links">
+    <a href="/dashboard">Settings</a>
+    <a href="/competitors">Competitors</a>
+    <form method="post" action="/logout" style="margin:0;">
+      <button class="btn btn-secondary" type="submit">Sign out</button>
+    </form>
+  </div>
+</nav>
+{% endblock %}
+{% block content %}
+<h1>Competitors</h1>
+<p class="lead">Changelog and pricing URLs scraped on each pipeline run.</p>
+
+<div class="card">
+  <h2>Active list</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Changelog</th>
+        <th>Pricing</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in competitors %}
+      <tr>
+        <td><strong>{{ c.name }}</strong></td>
+        <td class="muted">{{ c.changelog_url }}</td>
+        <td class="muted">{{ c.pricing_url }}</td>
+        <td>
+          {% if c.active %}
+          <span class="badge badge-active">active</span>
+          {% else %}
+          <span class="badge badge-inactive">inactive</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="/competitors/toggle" style="margin:0;">
+            <input type="hidden" name="name" value="{{ c.name }}">
+            <input type="hidden" name="active" value="{{ 'false' if c.active else 'true' }}">
+            <button class="btn btn-secondary" type="submit">
+              {{ 'Deactivate' if c.active else 'Activate' }}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Add or update competitor</h2>
+  <form method="post" action="/competitors">
+    <label for="name">Name</label>
+    <input id="name" name="name" type="text" required placeholder="Linear">
+
+    <label for="changelog_url">Changelog URL</label>
+    <input id="changelog_url" name="changelog_url" type="url" required placeholder="https://linear.app/changelog">
+
+    <label for="pricing_url">Pricing URL</label>
+    <input id="pricing_url" name="pricing_url" type="url" required placeholder="https://linear.app/pricing">
+
+    <button class="btn btn-primary" type="submit">Save competitor</button>
+  </form>
+</div>
+{% endblock %}

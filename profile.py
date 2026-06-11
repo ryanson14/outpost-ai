@@ -94,8 +94,32 @@ def _format_profile(data: dict[str, str], tickets: tuple[BacklogTicket, ...]) ->
     return "\n\n".join(sections)
 
 
-def load_user_profile(path: Path | str | None = None) -> str:
-    """Load and format the PM product profile from profile.yaml."""
+def format_user_profile(
+    cleaned: dict[str, str],
+    tickets: tuple[BacklogTicket, ...],
+) -> str:
+    """Format validated profile fields + backlog into Gemini prompt text."""
+    return truncate(_format_profile(cleaned, tickets), MAX_PROFILE_CHARS, label="user profile")
+
+
+def load_user_profile(
+    path: Path | str | None = None,
+    *,
+    user_id: str | None = None,
+) -> str:
+    """Load and format the PM product profile from Supabase or profile.yaml."""
+    if user_id:
+        from settings_store import get_settings
+
+        settings = get_settings(user_id)
+        if not settings:
+            raise ValueError(f"No workspace settings for user {user_id}.")
+        cleaned = {
+            field: getattr(settings, field)
+            for field in REQUIRED_FIELDS
+        }
+        return format_user_profile(cleaned, settings.backlog_tickets)
+
     data = _load_profile_data(path)
 
     missing = [field for field in REQUIRED_FIELDS if not data.get(field)]
@@ -107,4 +131,14 @@ def load_user_profile(path: Path | str | None = None) -> str:
         for field in REQUIRED_FIELDS
     }
     tickets = load_backlog_tickets(path)
-    return truncate(_format_profile(cleaned, tickets), MAX_PROFILE_CHARS, label="user profile")
+    return format_user_profile(cleaned, tickets)
+
+
+def load_backlog_for_user(user_id: str) -> tuple[BacklogTicket, ...]:
+    """Load backlog tickets from Supabase workspace settings."""
+    from settings_store import get_settings
+
+    settings = get_settings(user_id)
+    if not settings:
+        return ()
+    return settings.backlog_tickets

@@ -292,3 +292,80 @@ Connected the analysis engine to the multi-competitor scraper:
 ### **One-liner for tracker**
 
 > *Finished Phase A productization: PM profile in `profile.yaml`, competitors in Supabase, and Gemini-linked backlog tickets (`PROJ-402`, `PROJ-118`) in live Slack alerts — verified E2E with Linear 9/10 threat. Pushed to GitHub; next up is web UI.*
+
+---
+
+## Day 6
+
+### **Web UI — Phase B Step 5 (`app/` FastAPI dashboard) ✅**
+
+- Added **`app/main.py`** — FastAPI web app: sign up / sign in, dashboard, competitors, **Run now**
+- Added **`app/auth.py`** — Supabase email/password auth, session cookies, login rate limit (5 / 15 min)
+- Added **`app/templates/`** + **`app/static/style.css`** — settings UI (profile, backlog tickets, Slack webhook, threshold)
+- Added **`supabase/workspace_settings.sql`** — per-user profile, backlog JSON, Slack webhook, threat threshold
+- Added **`settings_store.py`** — load/save workspace settings; seed/backfill from `profile.yaml`
+- Updated **`brain.py`** — `run_pipeline(user_id=...)` uses DB settings + dashboard Slack webhook; Gemini **503 retry** (4 attempts, exponential backoff)
+- Updated **`competitors.py`** — `list_all_competitors()`, `upsert_competitor()`, `set_competitor_active()` for UI CRUD
+- Updated **`db.py`** — `get_auth_client()` with `SUPABASE_ANON_KEY` for server-side auth
+- Updated **`profile.py`** — load profile from Supabase when `user_id` provided
+- Updated **`requirements.txt`** — FastAPI, Uvicorn, Jinja2, python-multipart
+- Updated **`.env.example`** — `SUPABASE_ANON_KEY`, `OUTPOST_SESSION_SECRET`
+- Updated **`CONTEXT.md`** — web UI run instructions; Phase B Step 5 marked done
+
+---
+
+### **Supabase setup (manual)**
+
+- Ran **`workspace_settings.sql`** in SQL Editor
+- Created auth user manually in dashboard (signup hit Supabase **email rate limit**; disabled confirm-email for local dev)
+- **`workspace_settings`** row seeded/backfilled from `profile.yaml` on first login
+
+---
+
+### **Live E2E from web UI ✅**
+
+- Signed in → dashboard showed TaskFlow AI profile + backlog tickets (`PROJ-402`, `PROJ-118`)
+- Saved Slack webhook URL from dashboard
+- Added **Monday** competitor (`monday.com/whats-new` + pricing)
+- **Run now** → scraped Monday (Linear/Jira/Asana dedupe-skipped) → Gemini analysis → **Slack alert delivered**
+- Second run correctly skipped unchanged competitors (dedupe works from UI path too)
+
+---
+
+### **Bugs / issues resolved**
+
+| Issue | Fix |
+| --- | --- |
+| `OUTPOST_SESSION_SECRET` not loaded | Typo in `.env`: `OUTOST_` → `OUTPOST_` |
+| Signup white screen (500) | Catch `AuthApiError`; show error on form (invalid email, rate limit) |
+| Save settings error `product_name` | Python `locals()` bug in dict comprehension — explicit field mapping in `save_settings` |
+| Empty profile on manual auth user | `ensure_settings` backfills empty fields from `profile.yaml` |
+| Gemini 503 on Run now | Tenacity retry in `analyze_competitor_move`; clearer dashboard error message |
+
+---
+
+### **Current MVP status (end of session)**
+
+| **Component** | **Status** |
+| --- | --- |
+| AI analysis (Brain) | ✅ Done |
+| Multi-competitor scraping | ✅ Done |
+| Scrape → Analyze pipeline | ✅ Done |
+| Slack alerts | ✅ Live & tested |
+| Daily automation (GitHub Actions) | ✅ Live & tested |
+| Supabase deduplication | ✅ Live & tested |
+| Security hardening + RLS | ✅ Done |
+| Configurable PM profile | ✅ YAML + dashboard |
+| Configurable competitors | ✅ Supabase + dashboard CRUD |
+| Backlog ticket refs in Slack | ✅ Live & tested |
+| Web UI (auth, settings, run pipeline) | ✅ Live & tested |
+| GitHub cron uses dashboard settings | ❌ Still `profile.yaml` + `.env` (Step 8) |
+| Slack OAuth / multi-tenant | ❌ Phase B Steps 6–8 |
+
+**Phase B Step 5 complete.** Next: Slack OAuth, multi-tenant workspaces, or hosted cron per workspace.
+
+---
+
+### **One-liner for tracker**
+
+> *Shipped FastAPI web UI with Supabase Auth: PM configures profile, backlog, Slack, and competitors in the browser; Run now triggers scrape → Gemini → Slack. Verified E2E with new competitor Monday + live alert.*

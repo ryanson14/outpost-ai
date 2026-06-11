@@ -98,3 +98,70 @@ def load_competitors() -> tuple[CompetitorTarget, ...]:
 
 def load_competitor_names() -> set[str]:
     return {c.name for c in load_competitors()}
+
+
+def list_all_competitors() -> list[dict]:
+    """Return all competitors (active and inactive) for the web UI."""
+    if not is_configured():
+        return [
+            {
+                "name": c.name,
+                "changelog_url": c.changelog_url,
+                "pricing_url": c.pricing_url,
+                "active": True,
+            }
+            for c in DEFAULT_COMPETITORS
+        ]
+
+    client = get_client()
+    response = (
+        client.table(TABLE)
+        .select("name, changelog_url, pricing_url, active")
+        .order("name")
+        .execute()
+    )
+    return response.data or []
+
+
+def upsert_competitor(
+    name: str,
+    changelog_url: str,
+    pricing_url: str,
+    *,
+    active: bool = True,
+) -> CompetitorTarget:
+    """Create or update a competitor row."""
+    if not is_configured():
+        raise RuntimeError("Supabase not configured.")
+
+    safe_name = strip_control_chars(name.strip())
+    if not safe_name or len(safe_name) > 64:
+        raise ValueError("Invalid competitor name.")
+
+    target = CompetitorTarget(
+        name=safe_name,
+        changelog_url=validate_https_url(changelog_url),
+        pricing_url=validate_https_url(pricing_url),
+    )
+
+    client = get_client()
+    client.table(TABLE).upsert(
+        {
+            "name": target.name,
+            "changelog_url": target.changelog_url,
+            "pricing_url": target.pricing_url,
+            "active": active,
+        },
+        on_conflict="name",
+    ).execute()
+    return target
+
+
+def set_competitor_active(name: str, active: bool) -> None:
+    """Activate or deactivate a competitor without deleting history."""
+    if not is_configured():
+        raise RuntimeError("Supabase not configured.")
+
+    safe_name = strip_control_chars(name.strip())
+    client = get_client()
+    client.table(TABLE).update({"active": active}).eq("name", safe_name).execute()
