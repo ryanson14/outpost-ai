@@ -1,101 +1,99 @@
 # Outpost — Project Context
 
+> **Resume here:** MVP engine is production-ready. Phase 1 product polish in progress (`profile.yaml` done). See **Roadmap** and **Refactor when scaling** below.
+
 ## What This Is
 An AI-powered **competitive intelligence tool for Product Managers**. It monitors competitors automatically, filters the noise, and delivers only the strategic insights that actually matter — where the PM already works (Slack, Jira, email).
 
+**GitHub:** `ryanson14/outpost-ai` · **Branch:** `main`
+
 ---
 
-## Current Status (May 28, 2026)
+## Current Status (updated — post-security + profile.yaml)
 
 | Phase | Status | Notes |
 |---|---|---|
-| Phase 1 — The Brain | ✅ COMPLETE | Gemini outputs structured `StrategicAnalysis` JSON |
-| Phase 2 — The Fuel | 🔶 MOSTLY DONE | Cron done; **Supabase dedupe wired — finish setup below** |
-| Phase 3 — The Delivery | ✅ COMPLETE | Slack live & tested; daily cron via GitHub Actions |
-
-**Repo:** All work pushed to `main` on GitHub (`ryanson14/outpost-ai`).
+| Phase 1 — The Brain | ✅ COMPLETE | Gemini + `profile.yaml` for PM context |
+| Phase 2 — The Fuel | ✅ COMPLETE | 3 competitors, cron, Supabase dedupe |
+| Phase 3 — The Delivery | ✅ COMPLETE | Slack live; GitHub Actions daily @ 9 AM ET |
+| Security | ✅ COMPLETE | RLS, prompt guards, input limits — see `SECURITY.md` |
+| Productization | 🔶 IN PROGRESS | Profile config done; competitors still hardcoded |
 
 ---
 
 ## Session Log
 
-### May 28, 2026
-- Expanded scraper from 1 → **3 competitors** (Linear, Jira, Asana), each with changelog + pricing pages
-- Built `scrape_all_competitors()` and wired it into `brain.py`
-- Added `run_pipeline()` — full scrape → analyze loop for all competitors
-- Created `slack_notify.py` — formatted alerts + incoming webhook delivery
-- Added **threat threshold filter** (`OUTPOST_THREAT_THRESHOLD`, default 7) so Slack only fires on high-priority threats
-- Updated `CONTEXT.md` to reflect Python MVP architecture and current progress
-- **Git:** 2 commits pushed — multi-competitor scraper + Slack integration
-- **Slack E2E test passed** — live alert delivered to workspace channel
-- Added **GitHub Actions** workflow (`.github/workflows/daily-pipeline.yml`) — daily + manual runs
+### May 28, 2026 (initial MVP)
+- 3 competitors (Linear, Jira, Asana) · scrape → analyze → Slack pipeline
+- GitHub Actions cron · Slack E2E verified
+
+### Later sessions (production hardening)
+- **Supabase dedupe** — `page_snapshots` table, skip unchanged pages (local + cloud verified)
+- **GitHub Actions** — Node 24 action versions (`checkout@v6`, `setup-python@v6`)
+- **Security hardening** — `security.py`, `SECURITY.md`, `supabase/rls.sql`, `.env.example`
+- **Profile config (Step 1)** — `profile.yaml` + `profile.py`; removed hardcoded profile from `brain.py`
 
 ---
 
-## The Three Phases
+## Roadmap — Do these in order
 
-### Phase 1 — The "Brain" ✅ DONE
-The LLM takes two inputs and returns structured JSON:
-- **Input A:** Raw competitor update (scraped Markdown — changelog + pricing)
-- **Input B:** User Profile (product goals + current roadmap)
+### Phase A — Config polish (before multi-user)
+- [x] **1. User profile in `profile.yaml`** — edit goals/roadmap without code changes
+- [ ] **2. Configurable competitors in Supabase** — not hardcoded in `scraper.py`
+- [ ] **3. Jira-style ticket references in Slack alerts** — e.g. "Review PROJ-402"
+- [ ] **4. Keep this file updated** after each major session
 
-Output shape (`brain.py` → `StrategicAnalysis`):
-```json
-{
-  "strategic_intent": "...",
-  "threat_level": 7,
-  "threat_justification": "...",
-  "recommended_roadmap_pivot": "..."
-}
-```
+### Phase B — Sellable product (startup PMs)
+- [ ] **5. Simple web UI** — signup, add competitors, connect Slack
+- [ ] **6. Slack OAuth** — replace single incoming webhook per customer
+- [ ] **7. Multi-tenant Supabase** — `workspaces`, `users`, per-tenant data + RLS policies
+- [ ] **8. Move cron off personal GitHub** — Vercel Cron / Inngest per workspace
+- [ ] **9. Five design partner PM interviews** — validate alert quality
+- [ ] **10. Landing page + waitlist**
+- [ ] **11. Stripe billing** — when someone says they'd pay
 
----
-
-### Phase 2 — The "Fuel" 🔶 MOSTLY DONE
-
-**What's done:**
-- [x] Firecrawl set up and working
-- [x] **3 competitors** in `scraper.py`: **Linear**, **Jira**, **Asana** (changelog + pricing each)
-- [x] `scrape_all_competitors()` returns markdown for all targets
-- [x] `brain.py` → `run_pipeline()` runs scrape → analyze for every competitor
-
-**What's left:**
-- [x] **24-hour cron job** — GitHub Actions runs `python brain.py` daily at 9 AM ET
-- [ ] **Supabase deduplication** — table + env vars (code in `dedupe.py`; finish setup below)
+### Phase C — Post-MVP features (don't block on these)
+- [ ] Weekly digest email
+- [ ] G2 / review scraping
+- [ ] TypeScript + Vercel AI SDK migration
+- [ ] Jira API integration (real ticket matching)
 
 ---
 
-### Phase 3 — The "Delivery" 🔶 MOSTLY DONE
+## Refactor when scaling — DON'T FORGET
 
-**What's done:**
-- [x] `slack_notify.py` — webhook posting + alert formatting
-- [x] Wired into `run_pipeline()` in `brain.py`
-- [x] Alert format:
-  - 🚨 Strategic Threat Detected: [Competitor Name]
-  - Threat level, strategic intent, So What? (justification), recommended action
-- [x] **Threshold filter** — Slack only when `threat_level >= OUTPOST_THREAT_THRESHOLD` (default **7**)
+Structure is **fine for solo MVP / portfolio / 1–5 design partners**. Refactor these **before 50+ customers or a web app**:
 
-**What's left:**
-- [x] **Live end-to-end test** — `python brain.py` confirmed alert in Slack
-- [x] **Cron automation** — GitHub Actions daily schedule + manual trigger
-- [ ] Jira ticket references in alerts (post-MVP polish)
+| Issue | Where | Fix when productizing |
+|---|---|---|
+| `brain.py` does too much | orchestration + Gemini client + Pydantic models | Split → `pipeline.py` + `analysis.py` |
+| Competitors hardcoded | `scraper.py` `COMPETITORS` tuple | Step 2: Supabase `competitors` table |
+| Single-tenant everything | one profile, one webhook, one cron | Multi-tenant schema + per-workspace runs |
+| CLI script, no HTTP API | `python brain.py` only | FastAPI/Next.js API for web UI |
+| `service_role` Supabase key | `dedupe.py` | Per-workspace RLS + anon key in browser; service_role server-only |
+| No automated tests | — | Add tests before charging money |
+| Auth rate limiting (5/15 min) | N/A today | Add when login routes exist — see `SECURITY.md` |
+
+**Code health verdict (May 2026):** Not messy vibe-code — clear file split (`scraper`, `brain`, `dedupe`, `slack_notify`, `security`, `profile`). Good enough to keep building.
 
 ---
 
-## Repo Layout (Python MVP)
+## Repo Layout
 
 | File | Role |
 |---|---|
-| `scraper.py` | Firecrawl — 3 competitors, changelog + pricing |
-| `brain.py` | Gemini analysis + `run_pipeline()` orchestration |
-| `dedupe.py` | Supabase content hashing — skip unchanged pages |
-| `slack_notify.py` | Slack incoming webhook alerts |
-| `supabase/schema.sql` | SQL to create the `page_snapshots` table |
-| `.github/workflows/daily-pipeline.yml` | GitHub Actions — daily cron + manual run |
-| `requirements.txt` | Python dependencies |
-| `.env` | API keys (not committed) |
-
-> **Note:** Long-term stack targets TypeScript + Vercel AI SDK; current MVP is **Python** for speed.
+| `brain.py` | Pipeline orchestration + Gemini analysis |
+| `scraper.py` | Firecrawl — competitors (still hardcoded) |
+| `profile.yaml` | **PM product context** — edit this, not code |
+| `profile.py` | Loads + validates `profile.yaml` |
+| `dedupe.py` | Supabase content hashing |
+| `slack_notify.py` | Slack webhook alerts |
+| `security.py` | Prompt guards, size limits, validation |
+| `supabase/schema.sql` | `page_snapshots` table |
+| `supabase/rls.sql` | RLS policies (run once in SQL Editor) |
+| `SECURITY.md` | Security audit + remaining risks |
+| `.github/workflows/daily-pipeline.yml` | Daily cron + manual run |
+| `.env.example` | Secret template (never commit `.env`) |
 
 ---
 
@@ -104,82 +102,60 @@ Output shape (`brain.py` → `StrategicAnalysis`):
 ```bash
 FIRECRAWL_API_KEY=...
 GEMINI_API_KEY=...
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-OUTPOST_THREAT_THRESHOLD=7   # optional; only Slack when threat_level >= this
+SLACK_WEBHOOK_URL=...
+OUTPOST_THREAT_THRESHOLD=7      # optional
 SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_KEY=...             # service_role secret (Settings → API)
+SUPABASE_KEY=...                # service_role — server/CI only
+# OUTPOST_PROFILE_PATH=profile.yaml   # optional custom profile path
 ```
 
-**Slack setup:** Slack app → Incoming Webhooks → add to workspace → copy webhook URL into `.env`.
-
-**Supabase setup:**
-1. **SQL Editor** → paste + run `supabase/schema.sql` (creates `page_snapshots` table)
-2. **Settings → API** → copy **Project URL** → `SUPABASE_URL`
-3. **Settings → API** → copy **service_role** secret → `SUPABASE_KEY` (never commit)
-4. Add same two vars to GitHub Actions secrets
-
-**GitHub Actions secrets** (repo → Settings → Secrets and variables → Actions → New repository secret):
-
-| Secret | Required |
-|---|---|
-| `FIRECRAWL_API_KEY` | Yes |
-| `GEMINI_API_KEY` | Yes |
-| `SLACK_WEBHOOK_URL` | Yes |
-| `SUPABASE_URL` | Yes (for dedupe) |
-| `SUPABASE_KEY` | Yes (service_role, for dedupe) |
-| `OUTPOST_THREAT_THRESHOLD` | No (defaults to `7`) |
-
-After pushing the workflow file, trigger a test run: **Actions** tab → **Daily Competitive Intel Pipeline** → **Run workflow**.
+**GitHub Actions secrets:** same keys as above (no `.env` in repo).
 
 ---
 
 ## Run the Pipeline
 
 ```bash
-source .venv/bin/activate   # only needed for Python, not git
+source .venv/bin/activate
+pip install -r requirements.txt
 python brain.py
 ```
 
-Flow: scrape all competitors → **skip if unchanged (Supabase)** → Gemini analysis → **Slack alert** if threat ≥ threshold → save new hashes.
+**Flow:** load `profile.yaml` → scrape competitors → skip if unchanged (Supabase) → Gemini analysis → Slack if threat ≥ threshold → save hashes.
 
-**Verify dedupe:** Run `python brain.py` twice back-to-back. Second run should print `no page changes since last run, skipping` for each competitor.
+**Edit profile:** change `profile.yaml` → run again (no code edit needed).
 
----
-
-## Tech Stack
-
-| Layer | Tool (MVP) | Planned |
-|---|---|---|
-| Language | **Python 3.11** | TypeScript |
-| AI | **Google Gemini** (`google-genai`) | Vercel AI SDK |
-| Database | **Supabase** (`page_snapshots`) | Same |
-| Scraping | **Firecrawl.dev** | Same |
-| Delivery | **Slack Incoming Webhook** | Same |
+**Verify dedupe:** run twice back-to-back; second run should skip all competitors.
 
 ---
 
-## MVP — Must-Have Features
+## MVP Feature Checklist
 
 | Feature | Status |
 |---|---|
-| "So What?" Engine | ✅ `strategic_intent` + `threat_justification` |
-| Pricing / Changelog Scraper | ✅ Linear, Jira, Asana |
-| Slack Delivery | ✅ Live & tested |
-| Content deduplication | 🔶 Code done — finish Supabase setup |
-| Jira Integration | ❌ Not started |
+| "So What?" Engine | ✅ |
+| Changelog + pricing scraper | ✅ |
+| Slack delivery | ✅ |
+| Daily automation | ✅ |
+| Content deduplication | ✅ |
+| Security hardening + RLS | ✅ |
+| Configurable PM profile | ✅ `profile.yaml` |
+| Configurable competitors | ❌ Step 2 |
+| Jira ticket references | ❌ Step 3 |
+| Multi-tenant / web UI | ❌ Phase B |
+
+---
+
+## Key Decisions
+- Python for MVP speed; TypeScript migration later if needed
+- Gemini for structured JSON (`StrategicAnalysis` Pydantic schema)
+- Slack = delivery layer (no frontend yet)
+- Threat threshold (default 7) gates alert noise
+- Scraped competitor pages = **untrusted** (prompt injection defenses in `security.py`)
+- `service_role` Supabase key only in `.env` / GitHub Secrets — never in frontend
 
 ---
 
 ## Immediate Next Step
 
-> **Finish Supabase setup** (SQL table + env vars), run pipeline twice to verify dedupe, then push. Next: Jira integration or more competitors.
-
----
-
-## Key Decisions
-- Python for MVP prototyping; TypeScript migration later
-- Gemini for structured JSON analysis
-- Supabase stores content hashes in `page_snapshots` (skip unchanged pages)
-- Firecrawl for scraping
-- No frontend — Slack is the delivery layer for MVP
-- Threat threshold gates noise before Slack fires
+> **Step 2:** Store competitors in Supabase (name + changelog URL + pricing URL) and load them in `scraper.py` instead of the hardcoded `COMPETITORS` tuple.
