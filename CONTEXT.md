@@ -5,7 +5,8 @@
 ## What This Is
 An AI-powered **competitive intelligence tool for Product Managers**. It monitors competitors automatically, filters the noise, and delivers only the strategic insights that actually matter — where the PM already works (Slack, Jira, email).
 
-**GitHub:** `ryanson14/outpost-ai` · **Branch:** `main`
+**GitHub:** `ryanson14/outpost-ai` · **Branch:** `main`  
+**Build log:** day-by-day progress in [`PROGRESS.md`](PROGRESS.md)
 
 ---
 
@@ -22,6 +23,8 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 ---
 
 ## Session Log
+
+> Full day-by-day notes (Days 1–5+) live in [`PROGRESS.md`](PROGRESS.md). Summary below.
 
 ### May 28, 2026 (initial MVP)
 - 3 competitors (Linear, Jira, Asana) · scrape → analyze → Slack pipeline
@@ -95,6 +98,7 @@ Structure is **fine for solo MVP / portfolio / 1–5 design partners**. Refactor
 | `supabase/schema.sql` | `page_snapshots` table |
 | `supabase/rls.sql` | RLS policies (run once in SQL Editor) |
 | `SECURITY.md` | Security audit + remaining risks |
+| `PROGRESS.md` | Day-by-day build log for portfolio / session continuity |
 | `.github/workflows/daily-pipeline.yml` | Daily cron + manual run |
 | `.env.example` | Secret template (never commit `.env`) |
 
