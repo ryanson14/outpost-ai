@@ -9,6 +9,7 @@ MAX_PAGE_MARKDOWN_CHARS: Final[int] = 80_000
 MAX_COMPETITOR_UPDATE_CHARS: Final[int] = 160_000
 MAX_SLACK_MESSAGE_CHARS: Final[int] = 39_000  # Slack post limit ~40k
 MAX_COMPETITOR_NAME_CHARS: Final[int] = 64
+MAX_URL_CHARS: Final[int] = 2048
 MAX_FIELD_CHARS: Final[int] = 4_000  # per alert field
 
 # --- Pipeline guards (cost control; not HTTP rate limiting) ---
@@ -36,6 +37,14 @@ def validate_competitor_name(name: str, allowed: set[str]) -> str:
     if name not in allowed:
         raise ValueError(f"Unknown competitor: {name!r}")
     return name
+
+
+def validate_https_url(url: str) -> str:
+    """Require https URLs for scrape targets (basic SSRF guard)."""
+    url = strip_control_chars(url.strip())
+    if not url.startswith("https://") or len(url) > MAX_URL_CHARS:
+        raise ValueError(f"Invalid URL (must be https, max {MAX_URL_CHARS} chars): {url!r}")
+    return url
 
 
 def validate_page_type(page_type: str) -> str:

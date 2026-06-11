@@ -1,42 +1,14 @@
 import os
-from dataclasses import dataclass
 
 from dotenv import load_dotenv
 from firecrawl import FirecrawlApp
 
+from competitors import CompetitorTarget, load_competitors
 from security import MAX_PAGE_MARKDOWN_CHARS, truncate
 
 load_dotenv()
 FIRECRAWL_API_KEY = os.environ.get("FIRECRAWL_API_KEY")
 app = FirecrawlApp(api_key=FIRECRAWL_API_KEY)
-
-
-@dataclass(frozen=True)
-class CompetitorTarget:
-    name: str
-    changelog_url: str
-    pricing_url: str
-
-
-# Linear: modern issue tracker (baseline). Jira: enterprise eng teams + Jira ecosystem.
-# Asana: broad PM competitor for team retention and roadmap overlap.
-COMPETITORS: tuple[CompetitorTarget, ...] = (
-    CompetitorTarget(
-        name="Linear",
-        changelog_url="https://linear.app/changelog",
-        pricing_url="https://linear.app/pricing",
-    ),
-    CompetitorTarget(
-        name="Jira",
-        changelog_url="https://www.atlassian.com/software/jira/whats-new",
-        pricing_url="https://www.atlassian.com/software/jira/pricing",
-    ),
-    CompetitorTarget(
-        name="Asana",
-        changelog_url="https://asana.com/product/updates",
-        pricing_url="https://asana.com/pricing",
-    ),
-)
 
 
 def fetch_page(url: str) -> str:
@@ -49,7 +21,7 @@ def fetch_page(url: str) -> str:
 
 
 def fetch_competitor_changelog(url: str) -> str:
-    """Backward-compatible alias used by brain.py."""
+    """Backward-compatible alias."""
     return fetch_page(url)
 
 
@@ -62,10 +34,11 @@ def scrape_competitor(target: CompetitorTarget) -> dict[str, str]:
     }
 
 
-def scrape_all_competitors() -> dict[str, dict[str, str]]:
-    """Scrape changelog + pricing for every configured competitor."""
+def scrape_all_competitors(targets: tuple[CompetitorTarget, ...] | None = None) -> dict[str, dict[str, str]]:
+    """Scrape changelog + pricing for every active competitor."""
+    competitors = targets or load_competitors()
     results: dict[str, dict[str, str]] = {}
-    for target in COMPETITORS:
+    for target in competitors:
         results[target.name] = scrape_competitor(target)
     return results
 

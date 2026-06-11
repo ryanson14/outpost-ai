@@ -5,9 +5,10 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
+from competitors import load_competitors
 from dedupe import has_content_changed, save_snapshots
 from profile import load_user_profile
-from scraper import COMPETITORS, scrape_all_competitors
+from scraper import scrape_all_competitors
 from security import (
     MAX_GEMINI_CALLS_PER_RUN,
     MAX_PAGE_MARKDOWN_CHARS,
@@ -46,9 +47,9 @@ def analyze_competitor_move(user_profile: str, competitor_update: str) -> Strate
     return StrategicAnalysis.model_validate_json(response.text)
 
 
-def format_competitor_update(competitor_name: str, pages: dict[str, str]) -> str:
+def format_competitor_update(competitor_name: str, pages: dict[str, str], allowed_names: set[str]) -> str:
     """Combine changelog and pricing markdown into one analysis payload."""
-    safe_name = validate_competitor_name(competitor_name, {c.name for c in COMPETITORS})
+    safe_name = validate_competitor_name(competitor_name, allowed_names)
     changelog = truncate(pages.get("changelog", ""), MAX_PAGE_MARKDOWN_CHARS, label=f"{safe_name} changelog")
     pricing = truncate(pages.get("pricing", ""), MAX_PAGE_MARKDOWN_CHARS, label=f"{safe_name} pricing")
     return (
@@ -62,10 +63,10 @@ def run_pipeline(user_profile: str | None = None) -> None:
     """Scrape → analyze → Slack alert when threat meets threshold."""
     profile = user_profile or load_user_profile()
     threshold = get_threat_threshold()
-    print(f"🚀 STEP 1: Scraping all competitors (changelog + pricing)...")
-    all_intel = scrape_all_competitors()
-
-    allowed_names = {c.name for c in COMPETITORS}
+    competitors = load_competitors()
+    allowed_names = {c.name for c in competitors}
+    print(f"🚀 STEP 1: Scraping {len(competitors)} competitors (changelog + pricing)...")
+    all_intel = scrape_all_competitors(competitors)
     gemini_calls = 0
 
     print(f"\n🧠 STEP 2: Strategic analysis (Slack alerts at threat ≥ {threshold})...")
@@ -76,7 +77,7 @@ def run_pipeline(user_profile: str | None = None) -> None:
             print(f"⏭️  {name} — no page changes since last run, skipping.")
             continue
 
-        competitor_update = format_competitor_update(name, pages)
+        competitor_update = format_competitor_update(name, pages, allowed_names)
         print(f"\n{'=' * 60}")
         print(f"Analyzing {name}...")
         gemini_calls += 1

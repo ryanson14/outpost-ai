@@ -17,7 +17,7 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 | Phase 2 — The Fuel | ✅ COMPLETE | 3 competitors, cron, Supabase dedupe |
 | Phase 3 — The Delivery | ✅ COMPLETE | Slack live; GitHub Actions daily @ 9 AM ET |
 | Security | ✅ COMPLETE | RLS, prompt guards, input limits — see `SECURITY.md` |
-| Productization | 🔶 IN PROGRESS | Profile config done; competitors still hardcoded |
+| Productization | 🔶 IN PROGRESS | Profile + competitors in Supabase; Jira links next |
 
 ---
 
@@ -39,7 +39,7 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 
 ### Phase A — Config polish (before multi-user)
 - [x] **1. User profile in `profile.yaml`** — edit goals/roadmap without code changes
-- [ ] **2. Configurable competitors in Supabase** — not hardcoded in `scraper.py`
+- [x] **2. Configurable competitors in Supabase** — `competitors` table + `competitors.py`
 - [ ] **3. Jira-style ticket references in Slack alerts** — e.g. "Review PROJ-402"
 - [ ] **4. Keep this file updated** after each major session
 
@@ -67,7 +67,7 @@ Structure is **fine for solo MVP / portfolio / 1–5 design partners**. Refactor
 | Issue | Where | Fix when productizing |
 |---|---|---|
 | `brain.py` does too much | orchestration + Gemini client + Pydantic models | Split → `pipeline.py` + `analysis.py` |
-| Competitors hardcoded | `scraper.py` `COMPETITORS` tuple | Step 2: Supabase `competitors` table |
+| ~~Competitors hardcoded~~ | `competitors.py` + Supabase | ✅ Done; add `workspace_id` when multi-tenant |
 | Single-tenant everything | one profile, one webhook, one cron | Multi-tenant schema + per-workspace runs |
 | CLI script, no HTTP API | `python brain.py` only | FastAPI/Next.js API for web UI |
 | `service_role` Supabase key | `dedupe.py` | Per-workspace RLS + anon key in browser; service_role server-only |
@@ -83,7 +83,9 @@ Structure is **fine for solo MVP / portfolio / 1–5 design partners**. Refactor
 | File | Role |
 |---|---|
 | `brain.py` | Pipeline orchestration + Gemini analysis |
-| `scraper.py` | Firecrawl — competitors (still hardcoded) |
+| `competitors.py` | Load active competitors from Supabase |
+| `db.py` | Shared Supabase client |
+| `scraper.py` | Firecrawl — scrapes competitors from DB |
 | `profile.yaml` | **PM product context** — edit this, not code |
 | `profile.py` | Loads + validates `profile.yaml` |
 | `dedupe.py` | Supabase content hashing |
@@ -140,7 +142,7 @@ python brain.py
 | Content deduplication | ✅ |
 | Security hardening + RLS | ✅ |
 | Configurable PM profile | ✅ `profile.yaml` |
-| Configurable competitors | ❌ Step 2 |
+| Configurable competitors | ✅ Supabase `competitors` table |
 | Jira ticket references | ❌ Step 3 |
 | Multi-tenant / web UI | ❌ Phase B |
 
@@ -158,4 +160,4 @@ python brain.py
 
 ## Immediate Next Step
 
-> **Step 2:** Store competitors in Supabase (name + changelog URL + pricing URL) and load them in `scraper.py` instead of the hardcoded `COMPETITORS` tuple.
+> **Step 3:** Jira-style ticket references in Slack alerts. **Manual:** Run `supabase/competitors.sql` in SQL Editor if table doesn't exist yet.
