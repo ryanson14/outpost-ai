@@ -6,6 +6,7 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from dedupe import has_content_changed, save_snapshots
+from profile import load_user_profile
 from scraper import COMPETITORS, scrape_all_competitors
 from security import (
     MAX_GEMINI_CALLS_PER_RUN,
@@ -57,15 +58,9 @@ def format_competitor_update(competitor_name: str, pages: dict[str, str]) -> str
     )
 
 
-DEFAULT_USER_PROFILE = """
-Product Name: TaskFlow AI (Project management for AI startups)
-Current Q3 Goal: Increase retention of enterprise engineering teams.
-Current Roadmap Focus: Building a deep 'Jira-to-GitHub' automated synchronization engine.
-"""
-
-
-def run_pipeline(user_profile: str = DEFAULT_USER_PROFILE) -> None:
+def run_pipeline(user_profile: str | None = None) -> None:
     """Scrape → analyze → Slack alert when threat meets threshold."""
+    profile = user_profile or load_user_profile()
     threshold = get_threat_threshold()
     print(f"🚀 STEP 1: Scraping all competitors (changelog + pricing)...")
     all_intel = scrape_all_competitors()
@@ -90,7 +85,7 @@ def run_pipeline(user_profile: str = DEFAULT_USER_PROFILE) -> None:
                 f"Exceeded MAX_GEMINI_CALLS_PER_RUN ({MAX_GEMINI_CALLS_PER_RUN}). "
                 "Aborting to protect API quota."
             )
-        analysis = analyze_competitor_move(user_profile, competitor_update)
+        analysis = analyze_competitor_move(profile, competitor_update)
         print(f"\n📊 {name} — threat {analysis.threat_level}/10")
         print(analysis.model_dump_json(indent=2))
 
