@@ -9,6 +9,11 @@ create table if not exists public.workspace_settings (
   roadmap_focus text not null default '',
   backlog_tickets jsonb not null default '[]'::jsonb,
   slack_webhook_url text,
+  slack_team_id text,
+  slack_team_name text,
+  slack_channel_id text,
+  slack_channel_name text,
+  slack_connected_at timestamptz,
   threat_threshold int not null default 7 check (threat_threshold between 1 and 10),
   updated_at timestamptz not null default now()
 );

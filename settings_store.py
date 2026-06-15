@@ -28,6 +28,14 @@ class WorkspaceSettings:
     backlog_tickets: tuple[BacklogTicket, ...]
     slack_webhook_url: str | None
     threat_threshold: int
+    slack_team_id: str | None = None
+    slack_team_name: str | None = None
+    slack_channel_id: str | None = None
+    slack_channel_name: str | None = None
+    slack_connected_at: str | None = None
+
+    def slack_oauth_connected(self) -> bool:
+        return bool(self.slack_webhook_url and self.slack_channel_id)
 
 
 def _parse_backlog(raw: Any) -> tuple[BacklogTicket, ...]:
@@ -56,6 +64,13 @@ def _backlog_to_json(tickets: tuple[BacklogTicket, ...]) -> list[dict[str, str]]
     return [{"id": t.id, "title": t.title} for t in tickets]
 
 
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    cleaned = strip_control_chars(str(value).strip())
+    return cleaned or None
+
+
 def _row_to_settings(row: dict) -> WorkspaceSettings:
     return WorkspaceSettings(
         user_id=str(row["user_id"]),
@@ -64,12 +79,13 @@ def _row_to_settings(row: dict) -> WorkspaceSettings:
         q3_goal=strip_control_chars(str(row["q3_goal"]).strip()),
         roadmap_focus=strip_control_chars(str(row["roadmap_focus"]).strip()),
         backlog_tickets=_parse_backlog(row.get("backlog_tickets")),
-        slack_webhook_url=(
-            strip_control_chars(str(row["slack_webhook_url"]).strip())
-            if row.get("slack_webhook_url")
-            else None
-        ),
+        slack_webhook_url=_optional_str(row.get("slack_webhook_url")),
         threat_threshold=clamp_threat_threshold(str(row.get("threat_threshold", 7)), 7),
+        slack_team_id=_optional_str(row.get("slack_team_id")),
+        slack_team_name=_optional_str(row.get("slack_team_name")),
+        slack_channel_id=_optional_str(row.get("slack_channel_id")),
+        slack_channel_name=_optional_str(row.get("slack_channel_name")),
+        slack_connected_at=_optional_str(row.get("slack_connected_at")),
     )
 
 
@@ -133,6 +149,11 @@ def _backfill_from_yaml(user_id: str, existing: WorkspaceSettings) -> WorkspaceS
         ),
         "slack_webhook_url": existing.slack_webhook_url,
         "threat_threshold": existing.threat_threshold,
+        "slack_team_id": existing.slack_team_id,
+        "slack_team_name": existing.slack_team_name,
+        "slack_channel_id": existing.slack_channel_id,
+        "slack_channel_name": existing.slack_channel_name,
+        "slack_connected_at": existing.slack_connected_at,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     client = get_client()
@@ -163,6 +184,49 @@ def ensure_settings(user_id: str) -> WorkspaceSettings:
     return seeded
 
 
+def save_slack_oauth(user_id: str, connection: dict[str, Any]) -> WorkspaceSettings:
+    """Persist Slack OAuth connection (incoming webhook + channel metadata)."""
+    ensure_settings(user_id)
+    now = datetime.now(timezone.utc).isoformat()
+    row = {
+        "user_id": user_id,
+        "slack_webhook_url": strip_control_chars(str(connection["webhook_url"]).strip()),
+        "slack_team_id": _optional_str(connection.get("team_id")),
+        "slack_team_name": _optional_str(connection.get("team_name")),
+        "slack_channel_id": _optional_str(connection.get("channel_id")),
+        "slack_channel_name": _optional_str(connection.get("channel_name")),
+        "slack_connected_at": now,
+        "updated_at": now,
+    }
+    client = get_client()
+    client.table(TABLE).update(row).eq("user_id", user_id).execute()
+    saved = get_settings(user_id)
+    if not saved:
+        raise RuntimeError("Failed to save Slack connection.")
+    return saved
+
+
+def disconnect_slack(user_id: str) -> WorkspaceSettings:
+    """Remove Slack OAuth connection and webhook for this user."""
+    ensure_settings(user_id)
+    now = datetime.now(timezone.utc).isoformat()
+    row = {
+        "slack_webhook_url": None,
+        "slack_team_id": None,
+        "slack_team_name": None,
+        "slack_channel_id": None,
+        "slack_channel_name": None,
+        "slack_connected_at": None,
+        "updated_at": now,
+    }
+    client = get_client()
+    client.table(TABLE).update(row).eq("user_id", user_id).execute()
+    saved = get_settings(user_id)
+    if not saved:
+        raise RuntimeError("Failed to disconnect Slack.")
+    return saved
+
+
 def save_settings(
     user_id: str,
     *,
@@ -188,6 +252,7 @@ def save_settings(
         for field in REQUIRED_FIELDS:
             if not cleaned[field]:
                 cleaned[field] = getattr(existing, field)
+
     missing = [f for f, v in cleaned.items() if not v]
     if missing:
         labels = {
@@ -206,6 +271,9 @@ def save_settings(
         if slack_webhook_url and slack_webhook_url.strip()
         else None
     )
+    # Manual webhook paste: only update if provided; preserve OAuth webhook otherwise.
+    if not webhook and existing and existing.slack_webhook_url:
+        webhook = existing.slack_webhook_url
 
     row = {
         "user_id": user_id,
@@ -215,6 +283,12 @@ def save_settings(
         "threat_threshold": clamp_threat_threshold(str(threat_threshold), 7),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if existing:
+        row["slack_team_id"] = existing.slack_team_id
+        row["slack_team_name"] = existing.slack_team_name
+        row["slack_channel_id"] = existing.slack_channel_id
+        row["slack_channel_name"] = existing.slack_channel_name
+        row["slack_connected_at"] = existing.slack_connected_at
 
     client = get_client()
     client.table(TABLE).upsert(row, on_conflict="user_id").execute()

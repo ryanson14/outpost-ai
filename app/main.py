@@ -28,6 +28,9 @@ from competitors import list_all_competitors, set_competitor_active, upsert_comp
 from profile import BacklogTicket
 from security import clamp_threat_threshold, validate_ticket_id, validate_ticket_title
 from settings_store import ensure_settings, save_settings
+from slack_oauth import is_oauth_configured
+
+from app.slack_routes import slack_callback, slack_disconnect, slack_install
 
 APP_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=APP_DIR / "templates")
@@ -177,6 +180,7 @@ async def dashboard(request: Request):
             "user": user,
             "settings": settings,
             "backlog_rows": backlog_rows,
+            "slack_oauth_available": is_oauth_configured(),
             "flash": _pop_flash(request),
         },
     )
@@ -271,6 +275,26 @@ async def competitors_toggle(
         _flash(request, str(exc), level="error")
 
     return RedirectResponse("/competitors", status_code=303)
+
+
+@app.get("/slack/install")
+async def route_slack_install(request: Request):
+    return await slack_install(request)
+
+
+@app.get("/slack/callback")
+async def route_slack_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+):
+    return await slack_callback(request, code=code, state=state, error=error)
+
+
+@app.post("/slack/disconnect")
+async def route_slack_disconnect(request: Request):
+    return await slack_disconnect(request)
 
 
 @app.post("/run-pipeline")

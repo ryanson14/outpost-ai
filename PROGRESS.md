@@ -369,3 +369,63 @@ Connected the analysis engine to the multi-competitor scraper:
 ### **One-liner for tracker**
 
 > *Shipped FastAPI web UI with Supabase Auth: PM configures profile, backlog, Slack, and competitors in the browser; Run now triggers scrape → Gemini → Slack. Verified E2E with new competitor Monday + live alert.*
+
+---
+
+## Day 7
+
+### **Slack OAuth — Phase B Step 6 (`slack_oauth.py` + dashboard) ✅**
+
+- Added **`slack_oauth.py`** — OAuth v2 authorize URL + code exchange (`incoming-webhook` scope)
+- Added **`app/slack_routes.py`** — `/slack/install`, `/slack/callback`, `/slack/disconnect`
+- Updated **`settings_store.py`** — `save_slack_oauth()`, `disconnect_slack()`, Slack team/channel fields on `WorkspaceSettings`
+- Updated **dashboard** — **Add to Slack** button, connected status (channel + workspace), **Disconnect**; manual webhook under "Advanced"
+- Added **`supabase/slack_oauth.sql`** — `slack_team_id`, `slack_team_name`, `slack_channel_id`, `slack_channel_name`, `slack_connected_at` on `workspace_settings`
+- Updated **`workspace_settings.sql`** — OAuth columns included for new installs
+- Updated **`.env.example`** — `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, optional `OUTPOST_BASE_URL` / `SLACK_REDIRECT_URI`
+- Updated **`CONTEXT.md`** — Step 6 marked complete; OAuth setup instructions
+
+**How it works:** PM clicks **Add to Slack** → picks workspace + channel in Slack → Outpost stores incoming webhook URL + metadata automatically (no copy/paste). Alerts still sent via existing `slack_notify.py` webhook path.
+
+---
+
+### **Manual setup ✅ (completed)**
+
+1. Ran `supabase/slack_oauth.sql` in SQL Editor
+2. Slack app redirect URL: `http://127.0.0.1:8000/slack/callback` (exact match required)
+3. `SLACK_CLIENT_ID` + `SLACK_CLIENT_SECRET` in `.env`
+
+### **Live E2E from Slack OAuth ✅**
+
+- Dashboard → **Add to Slack** → connected to `#all-outpost` in Outpost workspace
+- **Run now** → Jira, Linear, Monday analyzed (9/10 each) → **3 Slack alerts** via OAuth webhook
+- Asana dedupe-skipped (unchanged pages)
+
+---
+
+### **Current MVP status (end of session)**
+
+| **Component** | **Status** |
+| --- | --- |
+| AI analysis (Brain) | ✅ Done |
+| Multi-competitor scraping | ✅ Done |
+| Scrape → Analyze pipeline | ✅ Done |
+| Slack alerts | ✅ Live & tested |
+| Daily automation (GitHub Actions) | ✅ Live & tested |
+| Supabase deduplication | ✅ Live & tested |
+| Security hardening + RLS | ✅ Done |
+| Configurable PM profile | ✅ YAML + dashboard |
+| Configurable competitors | ✅ Supabase + dashboard CRUD |
+| Backlog ticket refs in Slack | ✅ Live & tested |
+| Web UI (auth, settings, run pipeline) | ✅ Live & tested (Day 6) |
+| Slack OAuth (Add to Slack) | ✅ Live & tested (E2E) |
+| GitHub cron uses dashboard settings | ❌ Still `profile.yaml` + `.env` (Step 8) |
+| Multi-tenant workspaces | ❌ Step 7 |
+
+**Phase B Step 6 complete.** Next: Step 7 multi-tenant.
+
+---
+
+### **One-liner for tracker**
+
+> *Slack OAuth live: one-click "Add to Slack" on dashboard, E2E verified with Jira/Linear/Monday alerts via OAuth webhook — no manual webhook paste for web UI users.*

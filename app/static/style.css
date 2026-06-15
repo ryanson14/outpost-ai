@@ -185,3 +185,21 @@ th { color: var(--muted); font-weight: 500; }
 .auth-card { max-width: 420px; margin: 4rem auto; }
 
 .muted { color: var(--muted); font-size: 0.85rem; }
+
+.slack-connected {
+  margin-bottom: 0.75rem;
+}
+
+.slack-connected p {
+  margin: 0.5rem 0 0;
+}
+
+details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+details summary:hover {
+  color: var(--text);
+}

@@ -49,8 +49,33 @@
 
   <div class="card">
     <h2>Slack delivery</h2>
+
+    {% if settings.slack_oauth_connected() %}
+    <div class="slack-connected">
+      <span class="badge badge-active">Connected</span>
+      <p>
+        Alerts go to <strong>{{ settings.slack_channel_name }}</strong>
+        in <strong>{{ settings.slack_team_name }}</strong>.
+      </p>
+    </div>
+    <form method="post" action="/slack/disconnect" style="margin: 0 0 1rem;">
+      <button class="btn btn-secondary" type="submit">Disconnect Slack</button>
+    </form>
+    {% elif slack_oauth_available %}
+    <p class="muted">Connect Outpost to a Slack channel — no webhook URL to copy.</p>
+    <div class="actions" style="margin-bottom: 1rem;">
+      <a class="btn btn-primary" href="/slack/install">Add to Slack</a>
+    </div>
+    <details class="muted">
+      <summary>Advanced: paste webhook URL manually</summary>
+      <label for="slack_webhook_url" style="margin-top: 0.75rem;">Incoming webhook URL</label>
+      <input id="slack_webhook_url" name="slack_webhook_url" type="url" value="{{ settings.slack_webhook_url or '' }}" placeholder="https://hooks.slack.com/services/...">
+    </details>
+    {% else %}
+    <p class="muted">Set <code>SLACK_CLIENT_ID</code> and <code>SLACK_CLIENT_SECRET</code> in <code>.env</code> for one-click connect. Or paste a webhook below.</p>
     <label for="slack_webhook_url">Incoming webhook URL</label>
     <input id="slack_webhook_url" name="slack_webhook_url" type="url" value="{{ settings.slack_webhook_url or '' }}" placeholder="https://hooks.slack.com/services/...">
+    {% endif %}
 
     <label for="threat_threshold">Alert threshold (1–10)</label>
     <input id="threat_threshold" name="threat_threshold" type="number" min="1" max="10" value="{{ settings.threat_threshold }}">
