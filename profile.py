@@ -106,14 +106,16 @@ def load_user_profile(
     path: Path | str | None = None,
     *,
     user_id: str | None = None,
+    workspace_id: str | None = None,
 ) -> str:
     """Load and format the PM product profile from Supabase or profile.yaml."""
-    if user_id:
+    if user_id or workspace_id:
         from settings_store import get_settings
 
-        settings = get_settings(user_id)
+        settings = get_settings(user_id, workspace_id=workspace_id)
         if not settings:
-            raise ValueError(f"No workspace settings for user {user_id}.")
+            identifier = workspace_id or user_id
+            raise ValueError(f"No workspace settings for {identifier}.")
         cleaned = {
             field: getattr(settings, field)
             for field in REQUIRED_FIELDS

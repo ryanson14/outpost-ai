@@ -4,6 +4,7 @@ import httpx
 
 from db import get_client, is_configured
 from security import strip_control_chars, validate_https_url
+from settings_store import get_default_workspace_id
 
 TABLE = "competitors"
 
@@ -43,9 +44,10 @@ def _row_to_target(row: dict) -> CompetitorTarget:
     )
 
 
-def _seed_defaults(client) -> None:
+def _seed_defaults(client, workspace_id: str) -> None:
     rows = [
         {
+            "workspace_id": workspace_id,
             "name": c.name,
             "changelog_url": c.changelog_url,
             "pricing_url": c.pricing_url,
@@ -53,31 +55,38 @@ def _seed_defaults(client) -> None:
         }
         for c in DEFAULT_COMPETITORS
     ]
-    client.table(TABLE).upsert(rows, on_conflict="name").execute()
+    client.table(TABLE).upsert(rows, on_conflict="workspace_id,name").execute()
     print("📋 Seeded default competitors into Supabase.")
 
 
-def load_competitors() -> tuple[CompetitorTarget, ...]:
+def load_competitors(workspace_id: str | None = None) -> tuple[CompetitorTarget, ...]:
     """Load active competitors from Supabase. Seeds defaults if table is empty."""
     if not is_configured():
         print("⚠️  Supabase not configured — using built-in default competitors.")
         return DEFAULT_COMPETITORS
 
     try:
+        workspace_id = workspace_id or get_default_workspace_id()
+        if not workspace_id:
+            print("⚠️  No workspace found — using built-in default competitors.")
+            return DEFAULT_COMPETITORS
+
         client = get_client()
         response = (
             client.table(TABLE)
             .select("name, changelog_url, pricing_url")
+            .eq("workspace_id", workspace_id)
             .eq("active", True)
             .order("name")
             .execute()
         )
 
         if not response.data:
-            _seed_defaults(client)
+            _seed_defaults(client, workspace_id)
             response = (
                 client.table(TABLE)
                 .select("name, changelog_url, pricing_url")
+                .eq("workspace_id", workspace_id)
                 .eq("active", True)
                 .order("name")
                 .execute()
@@ -96,11 +105,11 @@ def load_competitors() -> tuple[CompetitorTarget, ...]:
         return DEFAULT_COMPETITORS
 
 
-def load_competitor_names() -> set[str]:
-    return {c.name for c in load_competitors()}
+def load_competitor_names(workspace_id: str | None = None) -> set[str]:
+    return {c.name for c in load_competitors(workspace_id)}
 
 
-def list_all_competitors() -> list[dict]:
+def list_all_competitors(workspace_id: str) -> list[dict]:
     """Return all competitors (active and inactive) for the web UI."""
     if not is_configured():
         return [
@@ -117,13 +126,24 @@ def list_all_competitors() -> list[dict]:
     response = (
         client.table(TABLE)
         .select("name, changelog_url, pricing_url, active")
+        .eq("workspace_id", workspace_id)
         .order("name")
         .execute()
     )
+    if not response.data:
+        _seed_defaults(client, workspace_id)
+        response = (
+            client.table(TABLE)
+            .select("name, changelog_url, pricing_url, active")
+            .eq("workspace_id", workspace_id)
+            .order("name")
+            .execute()
+        )
     return response.data or []
 
 
 def upsert_competitor(
+    workspace_id: str,
     name: str,
     changelog_url: str,
     pricing_url: str,
@@ -147,21 +167,28 @@ def upsert_competitor(
     client = get_client()
     client.table(TABLE).upsert(
         {
+            "workspace_id": workspace_id,
             "name": target.name,
             "changelog_url": target.changelog_url,
             "pricing_url": target.pricing_url,
             "active": active,
         },
-        on_conflict="name",
+        on_conflict="workspace_id,name",
     ).execute()
     return target
 
 
-def set_competitor_active(name: str, active: bool) -> None:
+def set_competitor_active(workspace_id: str, name: str, active: bool) -> None:
     """Activate or deactivate a competitor without deleting history."""
     if not is_configured():
         raise RuntimeError("Supabase not configured.")
 
     safe_name = strip_control_chars(name.strip())
     client = get_client()
-    client.table(TABLE).update({"active": active}).eq("name", safe_name).execute()
+    (
+        client.table(TABLE)
+        .update({"active": active})
+        .eq("workspace_id", workspace_id)
+        .eq("name", safe_name)
+        .execute()
+    )

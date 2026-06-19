@@ -1,6 +1,6 @@
 # Outpost — Project Context
 
-> **Resume here:** Phase B Step 6 done (Slack OAuth). Next: **Step 7 — multi-tenant**. Run web UI: `python -m app.main` → http://127.0.0.1:8000. **Manual:** run `supabase/slack_oauth.sql` if `workspace_settings` already exists.
+> **Resume here:** Phase B Step 7 validated (multi-tenant workspaces). Next: Step 8 performance/scalability. Run web UI: `python -m app.main` → http://127.0.0.1:8000.
 
 ## What This Is
 An AI-powered **competitive intelligence tool for Product Managers**. It monitors competitors automatically, filters the noise, and delivers only the strategic insights that actually matter — where the PM already works (Slack, Jira, email).
@@ -10,7 +10,7 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 
 ---
 
-## Current Status (updated — post Day 7 Slack OAuth)
+## Current Status (updated — post Day 8 multi-tenant)
 
 | Phase | Status | Notes |
 |---|---|---|
@@ -18,7 +18,7 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 | Phase 2 — The Fuel | ✅ COMPLETE | Competitors in Supabase (Linear, Jira, Asana, Monday+); dedupe |
 | Phase 3 — The Delivery | ✅ COMPLETE | Slack live (webhook + OAuth); GitHub Actions daily @ 9 AM ET |
 | Security | ✅ COMPLETE | RLS, prompt guards, input limits — see `SECURITY.md` |
-| Productization | 🔶 IN PROGRESS | Phase A complete; Phase B Steps 5–6 complete |
+| Productization | 🔶 IN PROGRESS | Phase A complete; Phase B Steps 5–7 implemented |
 
 ---
 
@@ -48,8 +48,15 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 - **`slack_oauth.py`** + **`app/slack_routes.py`** — OAuth v2 with `incoming-webhook` scope
 - Dashboard **Add to Slack** / **Disconnect** — channel picker during install; webhook stored automatically
 - **`supabase/slack_oauth.sql`** — migration for team/channel metadata columns on `workspace_settings`
-- Manual webhook paste kept as advanced fallback; GitHub Actions cron still uses `.env` until Step 8
+- Manual webhook paste kept as advanced fallback; GitHub Actions cron still uses `.env` until Step 9
 - **Live E2E verified:** Add to Slack → Jira/Linear/Monday alerts (9/10 each) delivered via OAuth webhook
+
+### Day 8 — Multi-tenant Supabase (Phase B Step 7)
+- **`supabase/workspaces.sql`** — `workspaces`, `workspace_members`, `workspace_id` on settings/competitors/snapshots
+- Backfilled current Supabase data: **1 workspace**, **1 member**, **4 competitors**, **8 page snapshots**
+- App code now passes `workspace_id` through settings, competitors, dedupe, profile loading, Slack OAuth, and **Run now**
+- New signup creates a v1 one-user workspace; default competitors seed per workspace
+- **Browser smoke test passed:** existing user still works; second test user has isolated settings/competitors
 
 ---
 
@@ -64,11 +71,12 @@ An AI-powered **competitive intelligence tool for Product Managers**. It monitor
 ### Phase B — Sellable product (startup PMs)
 - [x] **5. Simple web UI (v1)** — FastAPI + Supabase Auth: signup, profile/settings, competitors, run pipeline
 - [x] **6. Slack OAuth** — `Add to Slack` on dashboard (`incoming-webhook` scope); webhook stored automatically
-- [ ] **7. Multi-tenant Supabase** — `workspaces`, `users`, per-tenant data + RLS policies
-- [ ] **8. Move cron off personal GitHub** — Vercel Cron / Inngest per workspace; cron reads dashboard settings
-- [ ] **9. Five design partner PM interviews** — validate alert quality
-- [ ] **10. Landing page + waitlist**
-- [ ] **11. Stripe billing** — when someone says they'd pay
+- [x] **7. Multi-tenant Supabase** — `workspaces`, `workspace_members`, per-tenant data + RLS policies
+- [ ] **8. Performance & scalability** — fast runs now; architecture that scales to many workspaces (see below)
+- [ ] **9. Move cron off personal GitHub** — Vercel Cron / Inngest per workspace; cron reads dashboard settings
+- [ ] **10. Five design partner PM interviews** — validate alert quality
+- [ ] **11. Landing page + waitlist**
+- [ ] **12. Stripe billing** — when someone says they'd pay
 
 ### Phase C — Post-MVP features (don't block on these)
 - [ ] Weekly digest email
@@ -85,15 +93,38 @@ Structure is **fine for solo MVP / portfolio / 1–5 design partners**. Refactor
 | Issue | Where | Fix when productizing |
 |---|---|---|
 | `brain.py` does too much | orchestration + Gemini client + Pydantic models | Split → `pipeline.py` + `analysis.py` |
-| ~~Competitors hardcoded~~ | `competitors.py` + Supabase | ✅ Done; add `workspace_id` when multi-tenant |
-| Single-tenant everything | one profile, one webhook, one cron | Multi-tenant schema + per-workspace runs (Steps 7–8) |
-| ~~CLI only~~ | `python brain.py` | ✅ FastAPI web UI; cron still CLI until Step 8 |
+| ~~Competitors hardcoded~~ | `competitors.py` + Supabase | ✅ Done; workspace-scoped in Step 7 |
+| ~~Single-tenant everything~~ | one profile, one webhook, one cron | ✅ Workspace schema + per-workspace settings/competitors/snapshots |
+| ~~CLI only~~ | `python brain.py` | ✅ FastAPI web UI; cron still CLI until Step 9 |
 | `service_role` Supabase key | `db.py`, `settings_store.py` | Per-workspace RLS + anon key in browser; service_role server-only |
-| Cron vs dashboard split | GitHub Actions uses `profile.yaml` + `.env` | Step 8: per-workspace cron reads `workspace_settings` |
+| Cron vs dashboard split | GitHub Actions uses `profile.yaml` + `.env` | Step 9: per-workspace cron reads `workspace_settings` |
 | No automated tests | — | Add tests before charging money |
 | ~~Auth rate limiting~~ | `app/auth.py` | ✅ 5 attempts / 15 min on login |
+| Slow synchronous pipeline | `brain.py`, `scraper.py`, `app/main.py` | Step 8: parallel scrape, background jobs, split modules |
+| Run now blocks HTTP request | `app/main.py` `asyncio.to_thread` | Step 8: job queue + status UI (Inngest/Celery/ARQ) |
+| Sequential Firecrawl + Gemini | one competitor at a time | Step 8: bounded concurrency; respect API caps |
 
-**Code health verdict (May 2026):** Clear file split (`scraper`, `brain`, `dedupe`, `slack_notify`, `security`, `profile`, `app/`). Good enough to keep building.
+**Code health verdict (May 2026):** Clear file split (`scraper`, `brain`, `dedupe`, `slack_notify`, `security`, `profile`, `app/`). Good enough to keep building. **Perf work is Step 8** — after multi-tenant schema exists so optimizations target the right isolation model.
+
+---
+
+## Step 8 — Performance & scalability (planned)
+
+**Why now:** A full **Run now** with 4 competitors can take **1–3+ minutes** (8 Firecrawl calls + up to 4 Gemini calls, sequential). OAuth/setup friction is separate; the pipeline itself is the long pole.
+
+**Goals:**
+- **Faster perceived UX** — Run now returns immediately; user sees job progress (queued → scraping → analyzing → done)
+- **Faster wall clock** — parallel Firecrawl where safe; bounded parallel Gemini (respect `MAX_GEMINI_CALLS_PER_RUN`)
+- **Scale-ready** — split `brain.py`; per-workspace pipeline runs; no single long-lived HTTP request
+
+**Likely work (in order):**
+1. **Instrument** — log timings per competitor (scrape / analyze / slack); baseline before optimizing
+2. **Parallel scrape** — `asyncio` or thread pool for Firecrawl calls (with concurrency cap)
+3. **Background jobs** — queue `run_pipeline` (Inngest, ARQ, or Celery); dashboard poll or webhook on complete
+4. **Refactor** — `pipeline.py` + `analysis.py`; thin `brain.py` orchestrator
+5. **Scale guards** — per-workspace rate limits, job dedupe, cost caps (ties into Step 9 hosted cron)
+
+**Not in Step 8:** rewriting in TypeScript, multi-region, Kubernetes — overkill for 1–5 design partners.
 
 ---
 
@@ -173,7 +204,7 @@ python -m app.main   # → http://127.0.0.1:8000
 3. `.env`: `SUPABASE_ANON_KEY`, `OUTPOST_SESSION_SECRET`
 4. **Slack OAuth:** [api.slack.com/apps](https://api.slack.com/apps) → create app → OAuth & Permissions → Redirect URL `http://127.0.0.1:8000/slack/callback` → scope `incoming-webhook` → copy Client ID/Secret to `.env`
 
-**Important:** GitHub Actions cron still uses `profile.yaml` + `SLACK_WEBHOOK_URL` from secrets until Step 8.
+**Important:** GitHub Actions cron still uses `profile.yaml` + `SLACK_WEBHOOK_URL` from secrets until Step 9.
 
 ---
 
@@ -192,7 +223,9 @@ python -m app.main   # → http://127.0.0.1:8000
 | Jira ticket references | ✅ `backlog_tickets` + Slack *Related Backlog* |
 | Web UI (auth, settings, run pipeline) | ✅ `app/` FastAPI — E2E verified Day 6 |
 | Slack OAuth (Add to Slack) | ✅ Step 6 — E2E verified |
-| Multi-tenant / per-workspace cron | ❌ Steps 7–8 |
+| Performance & scalable pipeline | ❌ Step 8 |
+| Multi-tenant workspaces | ✅ Step 7 implemented |
+| Per-workspace cron | ❌ Step 9 |
 
 ---
 
@@ -209,4 +242,4 @@ python -m app.main   # → http://127.0.0.1:8000
 
 ## Immediate Next Step
 
-> **Step 7: Multi-tenant Supabase** — `workspaces` table, per-tenant data + RLS. **Before testing OAuth:** run `supabase/slack_oauth.sql` and set `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` in `.env`.
+> **Step 8: Performance & scalability** — make Run now fast and scale-ready with instrumentation, background jobs, parallel scrape, and run progress/status UI.

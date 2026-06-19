@@ -80,28 +80,36 @@ def run_pipeline(
     user_profile: str | None = None,
     *,
     user_id: str | None = None,
+    workspace_id: str | None = None,
 ) -> None:
     """Scrape → analyze → Slack alert when threat meets threshold."""
     slack_webhook_url: str | None = None
 
-    if user_id:
-        from settings_store import get_settings
+    if user_id or workspace_id:
+        from settings_store import get_default_workspace_id, get_settings
 
-        settings = get_settings(user_id)
+        if not workspace_id and not user_id:
+            workspace_id = get_default_workspace_id()
+        settings = get_settings(user_id, workspace_id=workspace_id)
         if not settings:
-            raise ValueError(f"No workspace settings for user {user_id}.")
-        profile = user_profile or load_user_profile(user_id=user_id)
+            identifier = workspace_id or user_id
+            raise ValueError(f"No workspace settings for {identifier}.")
+        workspace_id = settings.workspace_id
+        profile = user_profile or load_user_profile(workspace_id=workspace_id)
         backlog_tickets = settings.backlog_tickets
         threshold = settings.threat_threshold
         slack_webhook_url = settings.slack_webhook_url
     else:
+        from settings_store import get_default_workspace_id
+
+        workspace_id = get_default_workspace_id()
         profile = user_profile or load_user_profile()
         backlog_tickets = load_backlog_tickets()
         threshold = get_threat_threshold()
 
     ticket_map = {ticket.id: ticket.title for ticket in backlog_tickets}
     allowed_ticket_ids = set(ticket_map)
-    competitors = load_competitors()
+    competitors = load_competitors(workspace_id)
     allowed_names = {c.name for c in competitors}
     print(f"🚀 STEP 1: Scraping {len(competitors)} competitors (changelog + pricing)...")
     all_intel = scrape_all_competitors(competitors)
@@ -110,7 +118,7 @@ def run_pipeline(
     print(f"\n🧠 STEP 2: Strategic analysis (Slack alerts at threat ≥ {threshold})...")
     for name, pages in all_intel.items():
         validate_competitor_name(name, allowed_names)
-        if not has_content_changed(name, pages):
+        if not has_content_changed(name, pages, workspace_id=workspace_id):
             print(f"\n{'=' * 60}")
             print(f"⏭️  {name} — no page changes since last run, skipping.")
             continue
@@ -150,7 +158,7 @@ def run_pipeline(
         else:
             print(f"ℹ️  Below threshold ({threshold}) — no Slack alert.")
 
-        save_snapshots(name, pages)
+        save_snapshots(name, pages, workspace_id=workspace_id)
 
 
 if __name__ == "__main__":

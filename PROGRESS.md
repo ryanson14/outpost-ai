@@ -419,13 +419,60 @@ Connected the analysis engine to the multi-competitor scraper:
 | Backlog ticket refs in Slack | ✅ Live & tested |
 | Web UI (auth, settings, run pipeline) | ✅ Live & tested (Day 6) |
 | Slack OAuth (Add to Slack) | ✅ Live & tested (E2E) |
-| GitHub cron uses dashboard settings | ❌ Still `profile.yaml` + `.env` (Step 8) |
-| Multi-tenant workspaces | ❌ Step 7 |
+| Multi-tenant workspaces | ✅ Step 7 implemented |
+| GitHub cron uses dashboard settings | ❌ Still `profile.yaml` + `.env` (Step 9) |
 
-**Phase B Step 6 complete.** Next: Step 7 multi-tenant.
+**Phase B Step 6 complete.** Step 7 multi-tenant is covered in Day 8 below.
 
 ---
 
 ### **One-liner for tracker**
 
 > *Slack OAuth live: one-click "Add to Slack" on dashboard, E2E verified with Jira/Linear/Monday alerts via OAuth webhook — no manual webhook paste for web UI users.*
+
+---
+
+## Day 8
+
+### **Multi-tenant Supabase — Phase B Step 7 ✅**
+
+- Added **`supabase/workspaces.sql`** — creates `workspaces` and `workspace_members`
+- Migrated existing tables to include `workspace_id`:
+  - `workspace_settings`
+  - `competitors`
+  - `page_snapshots`
+- Backfilled existing Supabase data into one workspace:
+  - **1** workspace
+  - **1** workspace member
+  - **1** settings row
+  - **4** competitors
+  - **8** page snapshots
+- Updated app code so settings, competitors, dedupe, profile loading, Slack OAuth, and **Run now** all use the same workspace id
+- New signup creates a one-user workspace; new workspace competitor pages seed default competitors automatically
+
+### **Verification**
+
+- `./.venv/bin/python -m py_compile ...` ✅
+- Cursor lints on edited files ✅
+- Read-only Supabase smoke check ✅:
+  - `workspaces: 1`
+  - `workspace_members: 1`
+  - `workspace_settings: 1`
+  - `competitors: 4`
+  - `page_snapshots: 8`
+
+### **Browser smoke test ✅**
+
+- Existing user dashboard, competitors, Slack connection, and **Run now** still work
+- Second test user can sign in and has isolated settings/competitors
+- Supabase email confirmation redirected to the old `localhost:3000` default, but the account confirmation still succeeded; update Supabase Auth URL config before future auth testing
+
+### **Current next step**
+
+Step 8 is **Performance & scalability**: background jobs, parallel scrape, and run progress/status UI.
+
+---
+
+### **One-liner for tracker**
+
+> *Step 7 multi-tenant schema is implemented: Outpost now has workspaces, membership, workspace-scoped settings/competitors/snapshots, and the app threads workspace_id through dashboard runs and Slack delivery.*

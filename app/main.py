@@ -168,7 +168,7 @@ async def dashboard(request: Request):
     if not user:
         return _redirect_login()
 
-    settings = ensure_settings(user["id"])
+    settings = ensure_settings(user["id"], email=user.get("email"))
     backlog_rows = [{"id": t.id, "title": t.title} for t in settings.backlog_tickets]
     if not backlog_rows:
         backlog_rows = [{"id": "", "title": ""}]
@@ -227,12 +227,13 @@ async def competitors_page(request: Request):
     if not user:
         return _redirect_login()
 
+    settings = ensure_settings(user["id"], email=user.get("email"))
     return templates.TemplateResponse(
         request,
         "competitors.html",
         {
             "user": user,
-            "competitors": list_all_competitors(),
+            "competitors": list_all_competitors(settings.workspace_id),
             "flash": _pop_flash(request),
         },
     )
@@ -250,7 +251,14 @@ async def competitors_save(
         return _redirect_login()
 
     try:
-        upsert_competitor(name, changelog_url, pricing_url, active=True)
+        settings = ensure_settings(user["id"], email=user.get("email"))
+        upsert_competitor(
+            settings.workspace_id,
+            name,
+            changelog_url,
+            pricing_url,
+            active=True,
+        )
         _flash(request, f"Saved competitor {name.strip()}.")
     except Exception as exc:
         _flash(request, str(exc), level="error")
@@ -269,7 +277,8 @@ async def competitors_toggle(
         return _redirect_login()
 
     try:
-        set_competitor_active(name, active.lower() == "true")
+        settings = ensure_settings(user["id"], email=user.get("email"))
+        set_competitor_active(settings.workspace_id, name, active.lower() == "true")
         _flash(request, f"Updated {name}.")
     except Exception as exc:
         _flash(request, str(exc), level="error")
@@ -304,7 +313,12 @@ async def run_pipeline_now(request: Request):
         return _redirect_login()
 
     try:
-        await asyncio.to_thread(run_pipeline, user_id=user["id"])
+        settings = ensure_settings(user["id"], email=user.get("email"))
+        await asyncio.to_thread(
+            run_pipeline,
+            user_id=user["id"],
+            workspace_id=settings.workspace_id,
+        )
         _flash(request, "Pipeline finished. Check Slack for high-threat alerts.")
     except Exception as exc:
         message = str(exc)

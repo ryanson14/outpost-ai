@@ -1,4 +1,4 @@
-"""Per-user workspace settings in Supabase (profile, Slack, backlog)."""
+"""Workspace settings in Supabase (profile, Slack, backlog)."""
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,10 +16,13 @@ from security import (
 
 TABLE = "workspace_settings"
 REQUIRED_FIELDS = ("product_name", "product_description", "q3_goal", "roadmap_focus")
+WORKSPACES_TABLE = "workspaces"
+WORKSPACE_MEMBERS_TABLE = "workspace_members"
 
 
 @dataclass(frozen=True)
 class WorkspaceSettings:
+    workspace_id: str
     user_id: str
     product_name: str
     product_description: str
@@ -73,6 +76,7 @@ def _optional_str(value: Any) -> str | None:
 
 def _row_to_settings(row: dict) -> WorkspaceSettings:
     return WorkspaceSettings(
+        workspace_id=str(row["workspace_id"]),
         user_id=str(row["user_id"]),
         product_name=strip_control_chars(str(row["product_name"]).strip()),
         product_description=strip_control_chars(str(row["product_description"]).strip()),
@@ -89,7 +93,7 @@ def _row_to_settings(row: dict) -> WorkspaceSettings:
     )
 
 
-def _yaml_seed_row(user_id: str) -> dict:
+def _yaml_seed_row(user_id: str, workspace_id: str) -> dict:
     """Build a settings row from profile.yaml for first-time users."""
     from profile import _load_profile_data
 
@@ -109,6 +113,7 @@ def _yaml_seed_row(user_id: str) -> dict:
     }
     tickets = load_yaml_backlog()
     return {
+        "workspace_id": workspace_id,
         "user_id": user_id,
         **cleaned,
         "backlog_tickets": _backlog_to_json(tickets),
@@ -117,13 +122,100 @@ def _yaml_seed_row(user_id: str) -> dict:
     }
 
 
-def get_settings(user_id: str) -> WorkspaceSettings | None:
+def get_workspace_id_for_user(user_id: str) -> str | None:
+    """Return the user's first workspace id, if one exists."""
     if not is_configured():
         return None
+
     client = get_client()
     response = (
-        client.table(TABLE).select("*").eq("user_id", user_id).limit(1).execute()
+        client.table(WORKSPACE_MEMBERS_TABLE)
+        .select("workspace_id")
+        .eq("user_id", user_id)
+        .order("created_at")
+        .limit(1)
+        .execute()
     )
+    if not response.data:
+        return None
+    return str(response.data[0]["workspace_id"])
+
+
+def get_default_workspace_id() -> str | None:
+    """Best-effort workspace id for legacy CLI/GitHub Actions runs."""
+    if not is_configured():
+        return None
+
+    import os
+
+    env_workspace_id = os.environ.get("OUTPOST_WORKSPACE_ID")
+    if env_workspace_id:
+        return env_workspace_id.strip()
+
+    client = get_client()
+    response = (
+        client.table(TABLE)
+        .select("workspace_id")
+        .order("updated_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if response.data:
+        return str(response.data[0]["workspace_id"])
+
+    response = client.table(WORKSPACES_TABLE).select("id").limit(1).execute()
+    if response.data:
+        return str(response.data[0]["id"])
+    return None
+
+
+def ensure_workspace_for_user(user_id: str, *, email: str | None = None) -> str:
+    """Ensure the user has a v1 workspace and owner membership."""
+    if not is_configured():
+        raise RuntimeError("Supabase not configured.")
+
+    existing = get_workspace_id_for_user(user_id)
+    if existing:
+        return existing
+
+    workspace_id = user_id
+    name = (email or "").split("@")[0].strip() or "Outpost Workspace"
+    client = get_client()
+    client.table(WORKSPACES_TABLE).upsert(
+        {
+            "id": workspace_id,
+            "name": strip_control_chars(name),
+        },
+        on_conflict="id",
+    ).execute()
+    client.table(WORKSPACE_MEMBERS_TABLE).upsert(
+        {
+            "workspace_id": workspace_id,
+            "user_id": user_id,
+            "role": "owner",
+        },
+        on_conflict="workspace_id,user_id",
+    ).execute()
+    return workspace_id
+
+
+def get_settings(
+    user_id: str | None = None,
+    *,
+    workspace_id: str | None = None,
+) -> WorkspaceSettings | None:
+    if not is_configured():
+        return None
+    if not user_id and not workspace_id:
+        raise ValueError("user_id or workspace_id is required.")
+
+    client = get_client()
+    query = client.table(TABLE).select("*")
+    if workspace_id:
+        query = query.eq("workspace_id", workspace_id)
+    else:
+        query = query.eq("user_id", user_id)
+    response = query.limit(1).execute()
     if not response.data:
         return None
     return _row_to_settings(response.data[0])
@@ -135,8 +227,9 @@ def _needs_profile_backfill(settings: WorkspaceSettings) -> bool:
 
 def _backfill_from_yaml(user_id: str, existing: WorkspaceSettings) -> WorkspaceSettings:
     """Fill empty profile fields from profile.yaml (e.g. manually created auth users)."""
-    seed = _yaml_seed_row(user_id)
+    seed = _yaml_seed_row(user_id, existing.workspace_id)
     row = {
+        "workspace_id": existing.workspace_id,
         "user_id": user_id,
         "product_name": existing.product_name or seed["product_name"],
         "product_description": existing.product_description or seed["product_description"],
@@ -157,16 +250,17 @@ def _backfill_from_yaml(user_id: str, existing: WorkspaceSettings) -> WorkspaceS
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     client = get_client()
-    client.table(TABLE).upsert(row, on_conflict="user_id").execute()
-    updated = get_settings(user_id)
+    client.table(TABLE).upsert(row, on_conflict="workspace_id").execute()
+    updated = get_settings(workspace_id=existing.workspace_id)
     if not updated:
         raise RuntimeError("Failed to backfill workspace settings.")
     return updated
 
 
-def ensure_settings(user_id: str) -> WorkspaceSettings:
-    """Return settings for user, seeding from profile.yaml on first login."""
-    existing = get_settings(user_id)
+def ensure_settings(user_id: str, *, email: str | None = None) -> WorkspaceSettings:
+    """Return settings for user's workspace, seeding from profile.yaml on first login."""
+    workspace_id = ensure_workspace_for_user(user_id, email=email)
+    existing = get_settings(workspace_id=workspace_id)
     if existing:
         if _needs_profile_backfill(existing):
             return _backfill_from_yaml(user_id, existing)
@@ -175,10 +269,10 @@ def ensure_settings(user_id: str) -> WorkspaceSettings:
     if not is_configured():
         raise RuntimeError("Supabase not configured.")
 
-    row = _yaml_seed_row(user_id)
+    row = _yaml_seed_row(user_id, workspace_id)
     client = get_client()
     client.table(TABLE).insert(row).execute()
-    seeded = get_settings(user_id)
+    seeded = get_settings(workspace_id=workspace_id)
     if not seeded:
         raise RuntimeError("Failed to seed workspace settings.")
     return seeded
@@ -186,7 +280,7 @@ def ensure_settings(user_id: str) -> WorkspaceSettings:
 
 def save_slack_oauth(user_id: str, connection: dict[str, Any]) -> WorkspaceSettings:
     """Persist Slack OAuth connection (incoming webhook + channel metadata)."""
-    ensure_settings(user_id)
+    settings = ensure_settings(user_id)
     now = datetime.now(timezone.utc).isoformat()
     row = {
         "user_id": user_id,
@@ -199,8 +293,8 @@ def save_slack_oauth(user_id: str, connection: dict[str, Any]) -> WorkspaceSetti
         "updated_at": now,
     }
     client = get_client()
-    client.table(TABLE).update(row).eq("user_id", user_id).execute()
-    saved = get_settings(user_id)
+    client.table(TABLE).update(row).eq("workspace_id", settings.workspace_id).execute()
+    saved = get_settings(workspace_id=settings.workspace_id)
     if not saved:
         raise RuntimeError("Failed to save Slack connection.")
     return saved
@@ -208,7 +302,7 @@ def save_slack_oauth(user_id: str, connection: dict[str, Any]) -> WorkspaceSetti
 
 def disconnect_slack(user_id: str) -> WorkspaceSettings:
     """Remove Slack OAuth connection and webhook for this user."""
-    ensure_settings(user_id)
+    settings = ensure_settings(user_id)
     now = datetime.now(timezone.utc).isoformat()
     row = {
         "slack_webhook_url": None,
@@ -220,8 +314,8 @@ def disconnect_slack(user_id: str) -> WorkspaceSettings:
         "updated_at": now,
     }
     client = get_client()
-    client.table(TABLE).update(row).eq("user_id", user_id).execute()
-    saved = get_settings(user_id)
+    client.table(TABLE).update(row).eq("workspace_id", settings.workspace_id).execute()
+    saved = get_settings(workspace_id=settings.workspace_id)
     if not saved:
         raise RuntimeError("Failed to disconnect Slack.")
     return saved
@@ -241,7 +335,7 @@ def save_settings(
     if not is_configured():
         raise RuntimeError("Supabase not configured.")
 
-    existing = get_settings(user_id)
+    existing = ensure_settings(user_id)
     cleaned = {
         "product_name": strip_control_chars(product_name.strip()),
         "product_description": strip_control_chars(product_description.strip()),
@@ -276,6 +370,7 @@ def save_settings(
         webhook = existing.slack_webhook_url
 
     row = {
+        "workspace_id": existing.workspace_id,
         "user_id": user_id,
         **cleaned,
         "backlog_tickets": _backlog_to_json(backlog_tickets),
@@ -291,8 +386,8 @@ def save_settings(
         row["slack_connected_at"] = existing.slack_connected_at
 
     client = get_client()
-    client.table(TABLE).upsert(row, on_conflict="user_id").execute()
-    saved = get_settings(user_id)
+    client.table(TABLE).upsert(row, on_conflict="workspace_id").execute()
+    saved = get_settings(workspace_id=existing.workspace_id)
     if not saved:
         raise RuntimeError("Failed to save workspace settings.")
     return saved

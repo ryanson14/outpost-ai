@@ -109,7 +109,7 @@ def signup(email: str, password: str) -> dict[str, Any]:
             detail="Check your email to confirm your account, then sign in.",
         )
     user_id = str(response.user.id)
-    ensure_settings(user_id)
+    ensure_settings(user_id, email=response.user.email or email)
     return {
         "id": user_id,
         "email": response.user.email or email,
@@ -126,7 +126,7 @@ def login(email: str, password: str) -> dict[str, Any]:
     if not response.user or not response.session:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
     user_id = str(response.user.id)
-    ensure_settings(user_id)
+    ensure_settings(user_id, email=response.user.email or email)
     return {
         "id": user_id,
         "email": response.user.email or email,
