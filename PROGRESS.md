@@ -476,3 +476,35 @@ Step 8 is **Performance & scalability**: background jobs, parallel scrape, and r
 ### **One-liner for tracker**
 
 > *Step 7 multi-tenant schema is implemented: Outpost now has workspaces, membership, workspace-scoped settings/competitors/snapshots, and the app threads workspace_id through dashboard runs and Slack delivery.*
+
+---
+
+## Day 9
+
+### **Performance baseline + background Run now — Phase B Step 8 🔶**
+
+- Added timing logs around setup, competitor loading, Firecrawl, dedupe, Gemini, Slack send, snapshot save, and total pipeline time
+- Baseline Run now result:
+  - **Total:** 78.5s
+  - **Scrape:** 12.4s
+  - **Gemini:** ~63s across 4 competitors
+  - **Slack/Supabase:** negligible
+- Added **`supabase/pipeline_runs.sql`** for per-workspace run status tracking
+- Added **`pipeline_runs.py`** store helpers
+- Changed Dashboard **Run now** from blocking request to background execution
+- Dashboard now shows latest run status (`queued`, `running`, `succeeded`, `failed`) and disables duplicate runs while active
+- Ran `supabase/pipeline_runs.sql` in Supabase SQL Editor
+- Browser-tested background **Run now** successfully:
+  - Dashboard returned immediately
+  - Latest run showed `succeeded`
+  - Slack alerts still arrived
+- Background run timing result:
+  - **Total:** 48.0s
+  - **Scrape:** 9.1s
+  - **Gemini calls:** 2
+  - **Alerts sent:** 2
+  - **Dedupe skipped:** 2
+
+### **Next Step**
+
+Optimize internals: parallel scrape first, then consider bounded Gemini concurrency. The biggest UX win is already done because **Run now** no longer blocks the page.

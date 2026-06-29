@@ -1,4 +1,5 @@
 import os
+from time import perf_counter
 
 from dotenv import load_dotenv
 from google import genai
@@ -83,8 +84,10 @@ def run_pipeline(
     workspace_id: str | None = None,
 ) -> None:
     """Scrape → analyze → Slack alert when threat meets threshold."""
+    pipeline_started = perf_counter()
     slack_webhook_url: str | None = None
 
+    setup_started = perf_counter()
     if user_id or workspace_id:
         from settings_store import get_default_workspace_id, get_settings
 
@@ -106,21 +109,32 @@ def run_pipeline(
         profile = user_profile or load_user_profile()
         backlog_tickets = load_backlog_tickets()
         threshold = get_threat_threshold()
+    print(f"⏱️  Loaded workspace settings/profile in {perf_counter() - setup_started:.1f}s.")
 
     ticket_map = {ticket.id: ticket.title for ticket in backlog_tickets}
     allowed_ticket_ids = set(ticket_map)
+    competitors_started = perf_counter()
     competitors = load_competitors(workspace_id)
+    print(f"⏱️  Loaded {len(competitors)} competitors in {perf_counter() - competitors_started:.1f}s.")
     allowed_names = {c.name for c in competitors}
     print(f"🚀 STEP 1: Scraping {len(competitors)} competitors (changelog + pricing)...")
+    scrape_started = perf_counter()
     all_intel = scrape_all_competitors(competitors)
+    scrape_elapsed = perf_counter() - scrape_started
+    print(f"⏱️  STEP 1 total scrape time: {scrape_elapsed:.1f}s.")
     gemini_calls = 0
+    alerts_sent = 0
+    skipped = 0
 
     print(f"\n🧠 STEP 2: Strategic analysis (Slack alerts at threat ≥ {threshold})...")
     for name, pages in all_intel.items():
+        competitor_started = perf_counter()
         validate_competitor_name(name, allowed_names)
         if not has_content_changed(name, pages, workspace_id=workspace_id):
             print(f"\n{'=' * 60}")
             print(f"⏭️  {name} — no page changes since last run, skipping.")
+            skipped += 1
+            print(f"⏱️  Finished {name} in {perf_counter() - competitor_started:.1f}s.")
             continue
 
         competitor_update = format_competitor_update(name, pages, allowed_names)
@@ -132,7 +146,9 @@ def run_pipeline(
                 f"Exceeded MAX_GEMINI_CALLS_PER_RUN ({MAX_GEMINI_CALLS_PER_RUN}). "
                 "Aborting to protect API quota."
             )
+        analysis_started = perf_counter()
         analysis = analyze_competitor_move(profile, competitor_update)
+        print(f"⏱️  Gemini analyzed {name} in {perf_counter() - analysis_started:.1f}s.")
         print(f"\n📊 {name} — threat {analysis.threat_level}/10")
         print(analysis.model_dump_json(indent=2))
 
@@ -153,12 +169,26 @@ def run_pipeline(
                 ticket_map=ticket_map,
             )
             print(f"\n📣 STEP 3: Sending Slack alert for {name}...")
+            slack_started = perf_counter()
             if send_slack_alert(alert, webhook_url=slack_webhook_url):
                 print("✅ Slack alert sent.")
+                alerts_sent += 1
+            print(f"⏱️  Slack send for {name} took {perf_counter() - slack_started:.1f}s.")
         else:
             print(f"ℹ️  Below threshold ({threshold}) — no Slack alert.")
 
         save_snapshots(name, pages, workspace_id=workspace_id)
+        print(f"⏱️  Finished {name} in {perf_counter() - competitor_started:.1f}s.")
+
+    total_elapsed = perf_counter() - pipeline_started
+    print(
+        "\n⏱️  PIPELINE TIMING SUMMARY: "
+        f"total={total_elapsed:.1f}s, "
+        f"scrape={scrape_elapsed:.1f}s, "
+        f"gemini_calls={gemini_calls}, "
+        f"alerts_sent={alerts_sent}, "
+        f"dedupe_skipped={skipped}"
+    )
 
 
 if __name__ == "__main__":

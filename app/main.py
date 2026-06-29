@@ -1,13 +1,12 @@
 """Outpost web UI — settings, competitors, and manual pipeline runs."""
 
-import asyncio
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -25,6 +24,13 @@ from app.auth import (
 )
 from brain import run_pipeline
 from competitors import list_all_competitors, set_competitor_active, upsert_competitor
+from pipeline_runs import (
+    create_run,
+    get_latest_run,
+    mark_run_failed,
+    mark_run_running,
+    mark_run_succeeded,
+)
 from profile import BacklogTicket
 from security import clamp_threat_threshold, validate_ticket_id, validate_ticket_title
 from settings_store import ensure_settings, save_settings
@@ -76,6 +82,17 @@ def _parse_backlog_form(ticket_ids: list[str], ticket_titles: list[str]) -> tupl
         seen.add(ticket_id)
         tickets.append(BacklogTicket(id=ticket_id, title=validate_ticket_title(raw_title)))
     return tuple(tickets)
+
+
+def _run_pipeline_background(*, run_id: str, user_id: str, workspace_id: str) -> None:
+    """Run the long pipeline after the HTTP response has returned."""
+    try:
+        mark_run_running(run_id)
+        run_pipeline(user_id=user_id, workspace_id=workspace_id)
+        mark_run_succeeded(run_id)
+    except Exception as exc:
+        mark_run_failed(run_id, str(exc))
+        print(f"Pipeline run {run_id} failed: {exc}")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -169,6 +186,7 @@ async def dashboard(request: Request):
         return _redirect_login()
 
     settings = ensure_settings(user["id"], email=user.get("email"))
+    latest_run = get_latest_run(settings.workspace_id)
     backlog_rows = [{"id": t.id, "title": t.title} for t in settings.backlog_tickets]
     if not backlog_rows:
         backlog_rows = [{"id": "", "title": ""}]
@@ -180,6 +198,7 @@ async def dashboard(request: Request):
             "user": user,
             "settings": settings,
             "backlog_rows": backlog_rows,
+            "latest_run": latest_run,
             "slack_oauth_available": is_oauth_configured(),
             "flash": _pop_flash(request),
         },
@@ -307,19 +326,26 @@ async def route_slack_disconnect(request: Request):
 
 
 @app.post("/run-pipeline")
-async def run_pipeline_now(request: Request):
+async def run_pipeline_now(request: Request, background_tasks: BackgroundTasks):
     user = get_session_user(request)
     if not user:
         return _redirect_login()
 
     try:
         settings = ensure_settings(user["id"], email=user.get("email"))
-        await asyncio.to_thread(
-            run_pipeline,
+        latest_run = get_latest_run(settings.workspace_id)
+        if latest_run and latest_run.is_active():
+            _flash(request, "Pipeline is already running. Refresh the dashboard for status.")
+            return RedirectResponse("/dashboard", status_code=303)
+
+        run = create_run(workspace_id=settings.workspace_id, user_id=user["id"])
+        background_tasks.add_task(
+            _run_pipeline_background,
+            run_id=run.id,
             user_id=user["id"],
             workspace_id=settings.workspace_id,
         )
-        _flash(request, "Pipeline finished. Check Slack for high-threat alerts.")
+        _flash(request, "Pipeline started. Refresh the dashboard for status.")
     except Exception as exc:
         message = str(exc)
         if "503" in message and "UNAVAILABLE" in message:

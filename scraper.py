@@ -1,4 +1,5 @@
 import os
+from time import perf_counter
 
 from dotenv import load_dotenv
 from firecrawl import FirecrawlApp
@@ -15,8 +16,11 @@ def fetch_page(url: str) -> str:
     """Scrape a URL into clean Markdown via Firecrawl."""
     print(f"🌐 Firecrawl is scraping: {url}")
 
+    started = perf_counter()
     scrape_result = app.scrape_url(url, formats=["markdown"])
     raw = scrape_result.markdown if scrape_result.markdown else ""
+    elapsed = perf_counter() - started
+    print(f"⏱️  Firecrawl fetched {url} in {elapsed:.1f}s ({len(raw):,} chars).")
     return truncate(raw, MAX_PAGE_MARKDOWN_CHARS, label=url)
 
 
@@ -28,18 +32,25 @@ def fetch_competitor_changelog(url: str) -> str:
 def scrape_competitor(target: CompetitorTarget) -> dict[str, str]:
     """Scrape changelog and pricing for a single competitor."""
     print(f"\n📡 Scraping {target.name}...")
-    return {
+    started = perf_counter()
+    pages = {
         "changelog": fetch_page(target.changelog_url),
         "pricing": fetch_page(target.pricing_url),
     }
+    elapsed = perf_counter() - started
+    print(f"⏱️  Scraped {target.name} in {elapsed:.1f}s.")
+    return pages
 
 
 def scrape_all_competitors(targets: tuple[CompetitorTarget, ...] | None = None) -> dict[str, dict[str, str]]:
     """Scrape changelog + pricing for every active competitor."""
     competitors = targets or load_competitors()
+    started = perf_counter()
     results: dict[str, dict[str, str]] = {}
     for target in competitors:
         results[target.name] = scrape_competitor(target)
+    elapsed = perf_counter() - started
+    print(f"⏱️  Scraped all competitors in {elapsed:.1f}s.")
     return results
 
 

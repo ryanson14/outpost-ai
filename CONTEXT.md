@@ -108,7 +108,7 @@ Structure is **fine for solo MVP / portfolio / 1–5 design partners**. Refactor
 
 ---
 
-## Step 8 — Performance & scalability (planned)
+## Step 8 — Performance & scalability (in progress)
 
 **Why now:** A full **Run now** with 4 competitors can take **1–3+ minutes** (8 Firecrawl calls + up to 4 Gemini calls, sequential). OAuth/setup friction is separate; the pipeline itself is the long pole.
 
@@ -118,11 +118,13 @@ Structure is **fine for solo MVP / portfolio / 1–5 design partners**. Refactor
 - **Scale-ready** — split `brain.py`; per-workspace pipeline runs; no single long-lived HTTP request
 
 **Likely work (in order):**
-1. **Instrument** — log timings per competitor (scrape / analyze / slack); baseline before optimizing
-2. **Parallel scrape** — `asyncio` or thread pool for Firecrawl calls (with concurrency cap)
-3. **Background jobs** — queue `run_pipeline` (Inngest, ARQ, or Celery); dashboard poll or webhook on complete
+1. **Instrument** — ✅ timing logs per competitor (scrape / dedupe / analyze / slack / snapshot)
+2. **Background run status** — ✅ `pipeline_runs` table + dashboard status; Run now returns immediately; browser test succeeded
+3. **Parallel scrape** — `asyncio` or thread pool for Firecrawl calls (with concurrency cap)
 4. **Refactor** — `pipeline.py` + `analysis.py`; thin `brain.py` orchestrator
 5. **Scale guards** — per-workspace rate limits, job dedupe, cost caps (ties into Step 9 hosted cron)
+
+**Latest timing baseline:** first full run `78.5s` total (`12.4s` scrape, 4 Gemini calls). Background-run test succeeded at `48.0s` total (`9.1s` scrape, 2 Gemini calls, 2 dedupe skips). Gemini remains the main bottleneck; Slack/Supabase are negligible.
 
 **Not in Step 8:** rewriting in TypeScript, multi-region, Kubernetes — overkill for 1–5 design partners.
 

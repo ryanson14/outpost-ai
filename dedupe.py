@@ -1,6 +1,7 @@
 import hashlib
 import os
 from datetime import datetime, timezone
+from time import perf_counter
 
 from dotenv import load_dotenv
 
@@ -48,10 +49,15 @@ def has_content_changed(
         print("⚠️  No workspace found — skipping dedupe check.")
         return True
 
+    started = perf_counter()
     stored = _fetch_stored_hashes(workspace_id, competitor_name)
     for page_type, content in pages.items():
         if stored.get(page_type) != _hash_content(content):
+            elapsed = perf_counter() - started
+            print(f"⏱️  Dedupe checked {competitor_name} in {elapsed:.1f}s (changed).")
             return True
+    elapsed = perf_counter() - started
+    print(f"⏱️  Dedupe checked {competitor_name} in {elapsed:.1f}s (unchanged).")
     return False
 
 
@@ -85,8 +91,11 @@ def save_snapshots(
         }
         for page_type, content in pages.items()
     ]
+    started = perf_counter()
     client.table(TABLE).upsert(
         rows,
         on_conflict="workspace_id,competitor_name,page_type",
     ).execute()
+    elapsed = perf_counter() - started
     print(f"💾 Saved content hashes for {competitor_name}.")
+    print(f"⏱️  Saved snapshots for {competitor_name} in {elapsed:.1f}s.")

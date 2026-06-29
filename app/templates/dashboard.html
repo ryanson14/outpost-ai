@@ -89,8 +89,27 @@
 <form method="post" action="/run-pipeline" style="margin-top: 1.5rem;">
   <div class="card">
     <h2>Run pipeline now</h2>
-    <p class="muted">Scrape competitors → analyze with Gemini → Slack if threat ≥ threshold. May take 1–2 minutes.</p>
-    <button class="btn btn-primary" type="submit">Run now</button>
+    <p class="muted">Scrape competitors → analyze with Gemini → Slack if threat ≥ threshold. Runs in the background.</p>
+
+    {% if latest_run %}
+    <div class="run-status">
+      <span class="badge badge-{{ latest_run.status }}">{{ latest_run.status|title }}</span>
+      <p class="muted">
+        Last run created at {{ latest_run.created_at }}.
+        {% if latest_run.finished_at %}Finished at {{ latest_run.finished_at }}.{% endif %}
+      </p>
+      {% if latest_run.error_message %}
+      <p class="run-error">{{ latest_run.error_message }}</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="actions">
+      <button class="btn btn-primary" type="submit" {% if latest_run and latest_run.is_active() %}disabled{% endif %}>
+        {% if latest_run and latest_run.is_active() %}Run in progress{% else %}Run now{% endif %}
+      </button>
+      <a class="btn btn-secondary" href="/dashboard">Refresh status</a>
+    </div>
   </div>
 </form>
 {% endblock %}
